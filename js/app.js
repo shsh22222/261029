@@ -322,7 +322,7 @@
       '<div class="ec-body">' +
       '<div class="ec-meta">' + fmtDate(e.date) + ' · ' + fmtTime(e.createdAt) + (e.favorite ? ' · <span class="star">★</span>' : '') + '</div>' +
       '<h3>' + (e.kind !== 'free' ? '<span class="kind-badge kind-' + e.kind + '">' + KIND_LABEL(e.kind) + '</span>' : '') + highlight(title, terms) + '</h3>' +
-      '<p>' + highlight(excerpt(e, terms), terms) + '</p>' +
+      (e.kind === 'checkin' ? '' : '<p>' + highlight(excerpt(e, terms), terms) + '</p>') +
       (e.tags.length || e.energy || e.emotions.length ? '<div class="ec-tags">' + (e.energy ? '<span class="ec-energy">⚡' + e.energy + '</span>' : '') + e.emotions.slice(0, 4).map((w) => '<span class="ec-emo emo-' + emoGroup(w) + '">' + esc(w) + '</span>').join('') + e.tags.map((t) => '<span>#' + esc(t) + '</span>').join('') + '</div>' : '') +
       '</div>' +
       (mood ? '<div class="ec-mood mood-' + mood.v + '" title="' + mood.l + '">' + mood.e + '</div>' : '') +
@@ -353,6 +353,7 @@
     const lastEnergy = all.find((e) => e.energy);
     const prompt = PROMPTS[state.promptIdx % PROMPTS.length];
     const t = reminderTimes();
+    const care = state.careDismissed === todayStr() ? null : careSignal();
 
     const step = (id, status, sub) => {
       const f = FLOWS[id];
@@ -369,6 +370,9 @@
 
       (mit ? '<label class="mit-home' + (mitDone(morning) ? ' done' : '') + '"><input type="checkbox" id="mitCheck"' + (mitDone(morning) ? ' checked' : '') + '><span><small>🎯 今日の「1つ」</small>' + esc(mit) + '</span></label>' : '') +
 
+      (care ? '<section class="card care-card"><div class="care-text"><b>少ししんどそうな記録がありました（' + fmtTime(care.createdAt) + '）</b><p>気持ちに名前をつけて距離をとると、感情の波が落ち着きやすくなります。無理のない範囲でどうぞ。</p></div>' +
+        '<div class="row gap wrap"><button class="btn primary small" data-flow="reset">🌀 3分リセット</button><button class="btn small" data-flow="expressive">📝 書き出す</button><button class="btn ghost small" id="careDismiss">今はいい</button></div></section>' : '') +
+      (backupDue() ? '<section class="card backup-card"><span>💾 記録は<b>この端末のブラウザだけ</b>に保存されています。万一に備えてバックアップを。</span><button class="btn small" data-goto="settings">バックアップする</button></section>' : '') +
       '<section class="workflow"><div class="section-head"><h2>今日のワークフロー</h2><button class="btn small ghost" data-goto="guide">📖 使い方と根拠</button></div>' +
       '<div class="wf-row">' +
       step('morning', morning ? 'done' : '', morning ? fmtTime(morning.createdAt) + ' 完了' : esc(t.morning) + ' · 3分') +
@@ -413,7 +417,7 @@
         '<li><b>⚡ チェックイン（1分）</b>：前進・つまずき・気づきと、そのときの状態を記録</li>' +
         '<li><b>🌙 終業後（5分）</b>：前進と学びを確かめ、やり残しを書き出して仕事を閉じる</li>' +
         '<li>データは<b>このブラウザの中だけ</b>に保存され、サーバーには送信されません。</li></ul>' +
-        '<div class="row gap wrap"><button class="btn primary" data-flow="' + (rec || 'checkin') + '">はじめる</button><button class="btn" data-goto="guide">📖 なぜ効くの？</button></div></section>' : '') +
+        '<div class="row gap wrap"><button class="btn primary" data-flow="' + (rec || 'checkin') + '">はじめる</button><button class="btn" data-goto="guide">📖 なぜ効くの？</button><button class="btn ghost" data-goto="settings">⏰ 勤務時間を設定</button></div></section>' : '') +
       '</div>';
 
     const main = $('#main');
@@ -421,6 +425,7 @@
     $$('[data-flow]', main).forEach((b) => (b.onclick = () => startFlow(b.dataset.flow)));
     $$('[data-goto]', main).forEach((b) => (b.onclick = () => go(b.dataset.goto)));
     $$('.win-chip', main).forEach((b) => (b.onclick = () => openEntry(b.dataset.id)));
+    const cd = $('#careDismiss'); if (cd) cd.onclick = () => { state.careDismissed = todayStr(); renderHome(); };
     $('#homeNew').onclick = () => writeNew();
     $('#usePrompt').onclick = () => writeNew(todayStr(), { body: '> ' + prompt + '\n\n' });
     $('#shufflePrompt').onclick = () => { state.promptIdx = (state.promptIdx + 1 + Math.floor(Math.random() * (PROMPTS.length - 1))) % PROMPTS.length; renderHome(); };
@@ -762,7 +767,8 @@
       '</section>' +
 
       '<section class="card"><h2>💾 バックアップ</h2>' +
-      '<p class="muted small">データはこのブラウザ内（IndexedDB）にのみ保存されています。定期的なバックアップをおすすめします。</p>' +
+      '<p class="muted small">データはこのブラウザ内（IndexedDB）にのみ保存されています。定期的なバックアップをおすすめします。' +
+      (s.lastBackup ? '最後のバックアップ：' + fmtDateTime(s.lastBackup) : 'まだバックアップしていません。') + '</p>' +
       '<div class="row gap wrap">' +
       '<button class="btn" id="exportJson">JSON で書き出し</button>' +
       '<button class="btn" id="exportMd">Markdown で書き出し</button>' +
@@ -842,13 +848,15 @@
       if (state.key && !(await ask({ title: '平文で書き出します', message: 'JSON ファイルは暗号化されていません。保存場所に注意してください。', ok: '書き出す' }))) return;
       const data = { app: 'tsuzuri', version: 1, exportedAt: new Date().toISOString(), entries: sorted().map(serialize) };
       download('tsuzuri-' + todayStr() + '.json', JSON.stringify(data, null, 2), 'application/json');
+      markBackup();
     };
-    $('#exportMd').onclick = () => download('tsuzuri-' + todayStr() + '.md', toMarkdown(), 'text/markdown');
+    $('#exportMd').onclick = () => { download('tsuzuri-' + todayStr() + '.md', toMarkdown(), 'text/markdown'); markBackup(); };
     const ee = $('#exportEnc');
     if (ee) ee.onclick = async () => {
       const recs = await DB.getAll();
       const data = { app: 'tsuzuri', version: 1, encrypted: true, exportedAt: new Date().toISOString(), crypto: state.cryptoMeta, records: recs };
       download('tsuzuri-encrypted-' + todayStr() + '.json', JSON.stringify(data), 'application/json');
+      markBackup();
     };
     $('#importFile').onchange = async (e) => {
       const file = e.target.files[0];
@@ -1439,6 +1447,27 @@
     };
   }
 
+  const NEG = (w) => ['hn', 'ln'].includes(emoGroup(w));
+  const POS = (w) => ['hp', 'lp'].includes(emoGroup(w));
+  /** 今日の最新の状態がつらそうなら true（リセット／書き出しを提案） */
+  function careSignal() {
+    const today = todayStr();
+    const latest = sorted().filter((e) => e.date === today && (e.mood || e.energy || e.emotions.length)).sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (!latest) return null;
+    const after = sorted().some((e) => e.date === today && (e.kind === 'reset' || e.kind === 'expressive') && e.createdAt > latest.createdAt);
+    if (after || latest.kind === 'reset' || latest.kind === 'expressive') return null;
+    const neg = latest.emotions.filter(NEG).length;
+    const pos = latest.emotions.filter(POS).length;
+    if ((latest.mood && latest.mood <= 2) || (latest.energy && latest.energy <= 1) || (neg >= 2 && pos === 0)) return latest;
+    return null;
+  }
+  function backupDue() {
+    if (state.entries.size < 10) return false;
+    const last = state.settings.lastBackup || 0;
+    return Date.now() - last > 30 * 86400000;
+  }
+  function markBackup() { state.settings.lastBackup = Date.now(); saveSettings(); }
+
   function isWorkday(d = new Date()) { return state.settings.workdays.includes(d.getDay()); }
 
   function recommendedFlow() {
@@ -1487,6 +1516,8 @@
       '</div></div>' +
       '<div class="fw-block"><div class="fw-label">感情に名前をつける <span class="muted">（いくつでも）</span></div>' +
       EMOTIONS.map((g) => '<div class="emo-group emo-' + g.g + '">' + g.words.map((w) => '<button type="button" class="emo-chip' + ((v.emotions || []).includes(w) ? ' on' : '') + '" data-emo="' + esc(w) + '">' + esc(w) + '</button>').join('') + '</div>').join('') +
+      '<div class="emo-group emo-other" id="emoCustom">' + (v.emotions || []).filter((w) => emoGroup(w) === 'other').map((w) => '<button type="button" class="emo-chip on" data-emo="' + esc(w) + '">' + esc(w) + '</button>').join('') +
+      '<input class="emo-input" id="emoInput" placeholder="＋ ほかの言葉で" maxlength="20" enterkeyhint="done"></div>' +
       '</div>';
   }
 
@@ -1499,12 +1530,30 @@
       const x = +b.dataset.fmood; v.mood = v.mood === x ? null : x;
       $$('[data-fmood]', root).forEach((y) => y.classList.toggle('on', +y.dataset.fmood === v.mood)); onChange();
     }));
-    $$('[data-emo]', root).forEach((b) => (b.onclick = () => {
+    const bindEmo = (b) => (b.onclick = () => {
       v.emotions = v.emotions || [];
       const w = b.dataset.emo; const i = v.emotions.indexOf(w);
       if (i >= 0) v.emotions.splice(i, 1); else v.emotions.push(w);
       b.classList.toggle('on', i < 0); onChange();
-    }));
+    });
+    $$('[data-emo]', root).forEach(bindEmo);
+    const ei = $('#emoInput', root);
+    if (ei) {
+      const add = () => {
+        const w = ei.value.trim().replace(/[、,]/g, '');
+        ei.value = '';
+        if (!w) return;
+        v.emotions = v.emotions || [];
+        const ex = $$('[data-emo]', root).find((x) => x.dataset.emo === w);
+        if (ex) { if (!v.emotions.includes(w)) ex.click(); return; }
+        v.emotions.push(w);
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'emo-chip on'; b.dataset.emo = w; b.textContent = w;
+        ei.before(b); bindEmo(b); onChange();
+      };
+      ei.onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) { ev.preventDefault(); ev.stopPropagation(); add(); } };
+      ei.onblur = add;
+    }
   }
 
   function lastTomorrow() {
@@ -1796,10 +1845,19 @@
       '<p class="done-msg">' + esc(msg).replace(/\n/g, '<br>') + '</p>' +
       '<p class="muted small">🔥 ' + st.current + '日連続で記録中</p></div>' +
       (e ? '<div class="card prose done-summary">' + MD.render(e.body) + '</div>' : '') +
-      '<div class="flow-nav"><button class="btn" id="doneOpen">記録を開いて編集</button><button class="btn primary" id="doneHome">ホームへ</button></div>' +
+      '<div class="done-more"><p>まだ書きたいことがあれば、このまま自由に続けられます。</p><button class="btn" id="doneWrite">✍️ 続けて自由に書く</button></div>' +
+      '<div class="flow-nav"><button class="btn ghost" id="doneOpen">記録を見る</button><button class="btn primary" id="doneHome">ホームへ</button></div>' +
       '</div>';
     $('#doneHome').onclick = () => { state.flow = null; go('home'); };
     $('#doneOpen').onclick = () => { const id = fl.savedId; state.flow = null; openEntry(id); };
+    $('#doneWrite').onclick = async () => {
+      const id = fl.savedId;
+      const en = state.entries.get(id);
+      if (en && !/### 自由メモ/.test(en.body)) { en.body = en.body.replace(/\s*$/, '') + '\n\n### 自由メモ\n'; en.updatedAt = Date.now(); await persist(en); }
+      state.flow = null;
+      state.settings.editorMode = 'write'; saveSettings();
+      openEntry(id);
+    };
   }
 
   /* ---------- 記録の選択シート ---------- */
@@ -1811,7 +1869,7 @@
       order.map((id) => {
         const f = FLOWS[id];
         const done = f.once && ofKind(id, todayStr()).length;
-        return '<button class="sheet-item' + (rec === id ? ' rec' : '') + '" data-flow="' + id + '"><span class="si-icon">' + f.icon + '</span><span class="si-text"><b>' + esc(f.name) + '</b><small>' + esc(f.desc) + '</small></span><span class="si-meta">' + (done ? '✓ 済' : rec === id ? 'おすすめ' : f.minutes + '分') + '</span></button>';
+        return '<button class="sheet-item' + (rec === id ? ' rec' : '') + '" data-flow="' + id + '"><span class="si-icon">' + f.icon + '</span><span class="si-text"><b>' + esc(f.name) + '</b><small>' + esc(f.sub || f.desc) + '</small></span><span class="si-meta">' + (done ? '✓ 済' : rec === id ? 'おすすめ' : f.minutes + '分') + '</span></button>';
       }).join('') +
       '<button class="sheet-item" data-free="1"><span class="si-icon">✍️</span><span class="si-text"><b>自由に書く</b><small>Markdown エディタで自由に記録します</small></span><span class="si-meta"></span></button>' +
       '<button class="btn block" data-close="1">キャンセル</button></div>';
@@ -1849,6 +1907,12 @@
       '<li><b>' + esc(fromMin(hm(s.workEnd) - 15)) + ' 終業時（5分）</b> — 前進と学びを確認し、明日やることを書き出して仕事を閉じる</li>' +
       '<li><b>金曜（10分）</b> — 週次レビューで1週間の前進とエネルギーの傾向を振り返る</li></ol>' +
       '<p class="muted small">ポイントは「短く・毎日・同じタイミングで」。完璧より継続です。設定からカレンダーにリマインダーを登録できます。</p></section>' +
+      '<section class="card balance"><h2>✍️ 自由に書く？ 📊 状態をチェックする？</h2>' +
+      '<p>どちらか一方ではなく、<b>毎日は短いチェックインで続け、深く考えたい日にだけ書く</b>のがおすすめです。</p>' +
+      '<ul><li><b>チェックイン</b>：続けやすく、エネルギーや感情の傾向が見えます。ただし数字を付けるだけでは効果が薄いので、感情は<b>言葉で</b>選び、ひとこと添えましょう。</li>' +
+      '<li><b>自由に書く</b>：出来事の意味や因果を言葉にすることで、気持ちの整理や学びにつながります。各セッションの最後の「続けて自由に書く」や「今日の出来事」の質問から書けます。</li>' +
+      '<li><b>書きすぎ・測りすぎに注意</b>：チェックインは1日数回で十分です。同じ不満を何度も書くより、「次にどうするか」まで進めましょう。</li>' +
+      '<li><b>しんどい記録が続いたとき</b>は、ホームにリセットや書き出しの提案が表示されます。</li></ul></section>' +
       '<h2 class="month-head">セッション</h2>' +
       ['morning', 'checkin', 'shutdown', 'reset', 'weekly', 'expressive'].map(flowCard).join('') +
       '<h2 class="month-head">科学的な背景</h2>' +

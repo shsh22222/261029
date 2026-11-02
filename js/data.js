@@ -138,6 +138,16 @@
       text: 'ストレスになっている出来事について、思考と感情を15〜20分自由に書く方法。数百の研究があり、効果は小さめながら心身の健康への良い影響が報告されています。',
       ref: 'Pennebaker & Beall (1986); Frattaroli (2006)',
     },
+    narrative: {
+      title: '出来事を「物語」として書く',
+      text: '書くことの効果は、単に感情を吐き出すことより、出来事の因果や意味を言葉にして筋の通った物語にしていく過程と関係していると報告されています。数値だけの記録では得にくい部分です。',
+      ref: 'Pennebaker & Seagal (1999)',
+    },
+    rumination: {
+      title: '反すうに注意',
+      text: '同じ不満や不安をくり返し書くだけだと、かえって気分が沈むことがあります。書くときは「何が起きたか → どう感じたか → 何を学び、次にどうするか」まで進めるのがコツです。',
+      ref: 'Sloan et al. (2008); Nolen-Hoeksema et al. (2008)',
+    },
     habit: {
       title: '習慣化',
       text: '新しい習慣が自動化するまでの中央値は約66日。「始業時」「終業時」など既存の行動にひもづけ、短く続けることが鍵です。',
@@ -149,6 +159,7 @@
     morning: {
       id: 'morning', name: '始業前チェックイン', short: '始業前', icon: '☀️', minutes: 3, once: true, tags: ['始業前'],
       desc: '状態を確かめ、今日いちばん大事な「1つ」と「もし〜なら」の作戦を決めます。',
+      sub: '今日の「1つ」を決める',
       research: ['progress', 'ifthen', 'affect'],
       steps: [
         { key: 'state', type: 'state', label: '始業時の状態', q: 'いまの状態は？', hint: 'エネルギー・気分・感情を選ぶだけ。気持ちに名前をつけるだけで落ち着きやすくなります。', research: 'affect' },
@@ -160,6 +171,7 @@
     checkin: {
       id: 'checkin', name: 'クイックチェックイン', short: 'チェックイン', icon: '⚡', minutes: 1, tags: [],
       desc: '仕事の合間に1分。状態と、いま起きた前進・つまずき・気づきを記録します。',
+      sub: '前進・つまずきをひとこと',
       research: ['progress', 'affect'],
       steps: [
         { key: 'quick', type: 'quick', label: 'チェックイン', q: 'いま、どんな感じ？', hint: '前進は小さくても記録を。あとで見返すとやる気の源になります。', research: 'progress' },
@@ -168,6 +180,7 @@
     reset: {
       id: 'reset', name: 'ストレス・リセット', short: 'リセット', icon: '🌀', minutes: 3, tags: ['リセット'],
       desc: 'イライラ・不安を感じたときに。事実と感情を分け、距離を取り、次の一歩を決めます。',
+      sub: 'イライラ・不安を感じたら',
       research: ['affect', 'distance'],
       steps: [
         { key: 'situation', type: 'text', label: '何が起きたか（事実）', q: '何が起きましたか？', hint: '解釈や評価は脇に置いて、カメラに映る「事実」だけを書いてみましょう。', placeholder: '例：会議で企画への反対意見が続いた' },
@@ -178,12 +191,13 @@
     },
     shutdown: {
       id: 'shutdown', name: '終業シャットダウン', short: '終業後', icon: '🌙', minutes: 5, once: true, tags: ['終業'],
-      desc: '前進を確かめ、学びを言葉にし、やり残しを書き出して頭から降ろす。仕事モードを終える儀式です。',
-      research: ['progress', 'reflection', 'offload', 'detach', 'gratitude'],
+      desc: '前進を確かめ、今日の出来事と学びを言葉にし、やり残しを書き出して頭から降ろす。仕事モードを終える儀式です。',
+      sub: '振り返って仕事を閉じる',
+      research: ['progress', 'narrative', 'reflection', 'offload', 'detach'],
       steps: [
         { key: 'mit', type: 'mitReview', label: '今日のMIT', q: '朝に決めた「1つ」はどうなりましたか？', hint: '結果に良い悪いはありません。事実を確かめるだけです。' },
         { key: 'wins', type: 'list', label: '今日の前進', q: '今日の前進・小さな勝利は？', hint: '1行に1つ。「メールを返した」レベルでも十分です。前進の実感がやる気を育てます。', placeholder: '例：レビュー指摘をすべて反映した\n例：難しい相談に落ち着いて対応できた', research: 'progress', suggest: 'todayWins' },
-        { key: 'setback', type: 'text', label: 'つまずき', q: 'ひっかかったこと・うまくいかなかったことは？', hint: '書き出すことで、頭の中で反すうし続けるのを防げます。', optional: true },
+        { key: 'story', type: 'text', label: '今日の出来事', q: '今日いちばん心に残った出来事は？', hint: 'うまくいったこと・いかなかったこと、どちらでも。何が起きて、どう感じ、なぜそうなったと思うかを自由に。', placeholder: '例：午後の会議で反対されて焦った。でも後から考えると、前提の共有が足りなかったのが原因だと思う。', research: 'narrative', optional: true },
         { key: 'learning', type: 'text', label: '学び', q: '今日の学びと、次に変えたいことは？', hint: '「経験」は振り返ってはじめて「学び」になります。', placeholder: '例：先に結論を伝えると会議が短く済んだ。明日も最初に要点を話す。', research: 'reflection' },
         { key: 'tomorrow', type: 'list', label: '明日やること', q: 'やり残したこと、明日の最初の一手は？', hint: '書いたら、もう覚えておく必要はありません。1行目は明日の始業前に提案されます。', placeholder: '例：A社への見積もりを送る\n例：資料の3章を書く', research: 'offload' },
         { key: 'gratitude', type: 'line', label: 'ありがたかったこと', q: '今日、ありがたかった人やことは？', placeholder: '例：Bさんが急ぎのレビューを引き受けてくれた', research: 'gratitude', optional: true },
@@ -194,6 +208,7 @@
     weekly: {
       id: 'weekly', name: '週次レビュー', short: '週次', icon: '🗓️', minutes: 10, tags: ['週次'],
       desc: '1週間の前進とエネルギーの傾向を振り返り、来週のフォーカスを決めます。',
+      sub: '1週間を振り返る',
       research: ['progress', 'reflection', 'ifthen'],
       steps: [
         { key: 'wins', type: 'weekWins', label: '今週の前進', q: '今週の前進を振り返りましょう', hint: 'チェックインと終業時に記録した前進を集めました。付け加えたいものがあれば書いてください。', research: 'progress' },
@@ -206,9 +221,10 @@
     expressive: {
       id: 'expressive', name: 'エクスプレッシブ・ライティング', short: '書き出し', icon: '📝', minutes: 15, tags: ['書き出し'],
       desc: '気になっている出来事について、思考と感情をタイマーが終わるまで書き続けます。',
-      research: ['expressive'],
+      sub: 'もやもやを15分書き切る',
+      research: ['expressive', 'rumination'],
       steps: [
-        { key: 'text', type: 'timer', label: '書き出し', q: '頭と心にあることを、そのまま書き続けてください', hint: '文法も構成も気にせず、手を止めずに。仕事や人間関係で気になっていること、その時の気持ち、それが自分にとって何を意味するのか。書いた内容は誰にも見られません。', research: 'expressive' },
+        { key: 'text', type: 'timer', label: '書き出し', q: '頭と心にあることを、そのまま書き続けてください', hint: '文法も構成も気にせず、手を止めずに。仕事や人間関係で気になっていること、その時の気持ち、それが自分にとって何を意味するのか。書いた内容は誰にも見られません。最後の数分は「この経験から何を学んだか」「次にどうするか」も書いてみましょう。', research: 'expressive' },
       ],
     },
   };

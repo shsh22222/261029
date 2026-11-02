@@ -1,5 +1,5 @@
 /* オフライン対応 Service Worker */
-const CACHE = 'tsuzuri-v2';
+const CACHE = 'tsuzuri-v3';
 const ASSETS = [
   './',
   './index.html',

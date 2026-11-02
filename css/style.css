@@ -758,3 +758,32 @@ body.locked .app, body.locked .topbar { visibility: hidden; }
   .filters .chip { flex-shrink: 0; }
   .topbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
 }
+
+/* ---------- v3: ケア提案・バックアップ・自由記述への導線 ---------- */
+.care-card { display: flex; flex-direction: column; gap: 10px; border-color: color-mix(in srgb, var(--mood-1) 45%, var(--border)); background: color-mix(in srgb, var(--mood-1) 8%, var(--surface)); }
+.care-card p { margin: 4px 0 0; color: var(--muted); font-size: .88rem; }
+.backup-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: .9rem; padding: 12px 16px; }
+.done-more { text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); padding: 14px; margin-top: 4px; }
+.done-more p { margin: 0 0 10px; color: var(--muted); font-size: .9rem; }
+.emo-input {
+  border: 1px dashed var(--border); background: transparent; border-radius: 999px; padding: 6px 12px;
+  font-size: .88rem; width: 9.5em; color: var(--text);
+}
+.emo-input:focus { outline: none; border-color: var(--accent); border-style: solid; }
+.balance ul { margin: 0; padding-left: 1.2em; }
+.balance li { margin: 6px 0; }
+.flow-nav > span:empty { display: none; }
+@media (max-width: 760px) {
+  /* セッション中はアプリ上部バーを隠して入力欄を広く */
+  body[data-view="flow"] .topbar { display: none; }
+  body[data-view="flow"] .view.flow { padding-top: max(12px, env(safe-area-inset-top)); }
+  /* 感情は1グループ1行の横スクロールにして縦の長さを短縮 */
+  .emo-group { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px 6px; padding: 2px 16px; scrollbar-width: none; }
+  .emo-group::-webkit-scrollbar { display: none; }
+  .emo-chip, .emo-input { flex-shrink: 0; }
+  .energy-btn { padding: 8px 2px 6px; }
+  .eb-bar { height: 26px; }
+  .mood-row .mood-btn { width: 44px; height: 44px; }
+  .fw-block { margin-bottom: 14px; }
+  .flow-progress { margin-bottom: 18px; }
+}
