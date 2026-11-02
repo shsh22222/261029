@@ -1,8 +1,8 @@
 name: Deploy to GitHub Pages
 
+# 通常は Settings → Pages の「Deploy from a branch」で公開できるため、
+# このワークフローは手動実行（Source を「GitHub Actions」にした場合用）のみ。
 on:
-  push:
-    branches: [main, claude/amazing-allen-jot0ah]
   workflow_dispatch:
 
 permissions:

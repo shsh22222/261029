@@ -5,9 +5,9 @@
 ## 公開（GitHub Pages）
 
 1. GitHub のリポジトリで **Settings → Pages** を開く
-2. **Build and deployment → Source** を「**GitHub Actions**」にする
-3. このブランチ（または `main`）に push すると `.github/workflows/pages.yml` が自動でデプロイ
-4. `https://<ユーザー名>.github.io/<リポジトリ名>/` で開ける（スマホでは「ホーム画面に追加」でアプリのように使える）
+2. **Build and deployment → Source** を「**Deploy from a branch**」にする
+3. **Branch** で `claude/amazing-allen-jot0ah`（または `main`）と `/ (root)` を選んで **Save**
+4. 1〜2分後に `https://<ユーザー名>.github.io/<リポジトリ名>/` で開ける（以後は push するたびに自動更新）
 
 > サーバーは使いません。記録は各端末のブラウザ内（IndexedDB）に保存され、外部には送信されません。PC とスマホの記録は自動では同期されないため、設定の「書き出し／読み込み」で移せます。
 
