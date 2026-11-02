@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>綴 Tsuzuri — ワークジャーナル</title>
-  <meta name="description" content="研究にもとづく、仕事の前・最中・後のためのプライベートなジャーナリングアプリ">
-  <meta name="theme-color" content="#c2643c">
+  <title>綴 Tsuzuri</title>
+  <meta name="description" content="こころを整え、毎日のよいことに気づくための、プライベートなジャーナル">
+  <meta name="theme-color" content="#f3f4f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151918" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
@@ -29,7 +30,7 @@
     <form id="lockForm" class="lock-card" autocomplete="off">
       <div class="lock-logo">綴</div>
       <h1>ジャーナルはロックされています</h1>
-      <p class="muted">パスフレーズを入力して開いてください。</p>
+      <p class="muted">パスフレーズを入力してください。</p>
       <input id="lockPass" type="password" placeholder="パスフレーズ" autocomplete="current-password" required>
       <p id="lockError" class="error" hidden>パスフレーズが違います</p>
       <button class="btn primary block" type="submit" id="lockSubmit">ロック解除</button>
@@ -45,20 +46,20 @@
 
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><span class="brand-mark">綴</span><span class="brand-name">Tsuzuri<small>journal</small></span></div>
-      <button class="btn primary block" id="newEntryBtn">＋ 記録する <kbd>Ctrl+J</kbd></button>
+      <div class="brand"><span class="brand-mark">綴</span><span class="brand-name">Tsuzuri<small>こころのジャーナル</small></span></div>
+      <button class="btn primary block" id="newEntryBtn">＋ 書く</button>
       <div class="search">
         <input id="searchInput" type="search" placeholder="検索…  (Ctrl+K)" aria-label="検索">
       </div>
       <nav class="nav" id="nav">
         <button data-view="home"><span>🏠</span>ホーム</button>
-        <button data-view="list"><span>📚</span>すべての記録</button>
+        <button data-view="list"><span>📖</span>記録</button>
         <button data-view="calendar"><span>📅</span>カレンダー</button>
-        <button data-view="stats"><span>📈</span>インサイト</button>
-        <button data-view="guide"><span>📖</span>ガイドと根拠</button>
+        <button data-view="stats"><span>🌿</span>こころの傾向</button>
+        <button data-view="guide"><span>💡</span>ガイド</button>
         <button data-view="settings"><span>⚙️</span>設定</button>
       </nav>
-      <div class="side-section">
+      <div class="side-section" id="tagSection">
         <h4>タグ</h4>
         <div id="tagList" class="tag-list"></div>
       </div>
@@ -70,10 +71,10 @@
 
   <nav class="bottombar" id="bottombar" aria-label="メインナビゲーション">
     <button data-view="home"><span>🏠</span>ホーム</button>
-    <button data-view="list"><span>📚</span>記録</button>
-    <button class="bb-add" id="bbAdd" aria-label="記録する"><span>＋</span></button>
+    <button data-view="list"><span>📖</span>記録</button>
+    <button class="bb-add" id="bbAdd" aria-label="書く"><span>＋</span></button>
     <button data-view="calendar"><span>📅</span>カレンダー</button>
-    <button data-view="stats"><span>📈</span>インサイト</button>
+    <button data-view="stats"><span>🌿</span>傾向</button>
   </nav>
 
   <div id="modal" class="modal" hidden></div>

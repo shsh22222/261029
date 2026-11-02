@@ -12,7 +12,7 @@
   const DEFAULT_SETTINGS = {
     theme: 'system', font: 'sans', fontSize: 17, dailyGoal: 400,
     autoLockMin: 0, weekStart: 0, editorMode: 'write', spellcheck: false,
-    workStart: '09:00', workEnd: '18:00', workdays: [1, 2, 3, 4, 5], notify: false,
+    morningTime: '07:30', eveningTime: '21:30', notify: false,
   };
 
   const state = {
@@ -227,8 +227,24 @@
     });
   }
 
+  function summaryOf(e) {
+    const d = e.data;
+    if (!d || e.kind === 'free') return null;
+    const j = (x) => (Array.isArray(x) ? x.join('、') : x || '');
+    switch (e.kind) {
+      case 'morning': return [d.intention || d.mit, d.lookforward ? '楽しみ：' + d.lookforward : ''].filter(Boolean).join('　');
+      case 'shutdown': return j(d.good || d.wins) || d.story || '';
+      case 'reset': return d.compassion || d.situation || '';
+      case 'weekly': return d.self || j(d.good);
+      case 'expressive': return d.text || '';
+      case 'future': return d.vision || '';
+      default: return null;
+    }
+  }
+
   function excerpt(e, terms, len = 120) {
-    const text = MD.plain(e.body);
+    const sum = summaryOf(e);
+    const text = sum != null ? String(sum).replace(/\s+/g, ' ') : MD.plain(e.body);
     const ts = terms.filter((t) => !t.startsWith('#'));
     if (ts.length) {
       const lower = text.toLowerCase();
@@ -264,7 +280,7 @@
   async function go(view, opts = {}) {
     if (state.view === 'flow' && view !== 'flow' && state.flow) {
       if (state.flow.dirty && !opts.force) {
-        const ok = await ask({ title: '入力中の内容を破棄しますか？', message: 'このセッションはまだ保存されていません。', ok: '破棄する', cancel: '続ける', danger: true });
+        const ok = await ask({ title: '書きかけの内容は保存されていません', message: '閉じると、いま入力した内容は消えます。', ok: '閉じる', cancel: '書き続ける', danger: true });
         if (!ok) return;
       }
       stopFlowTimer();
@@ -298,11 +314,11 @@
     $('#tagList').innerHTML = tags.length
       ? tags.slice(0, 40).map(([t, n]) =>
         '<button class="tag-chip' + (state.view === 'list' && state.filter.tag === t ? ' active' : '') + '" data-tag="' + esc(t) + '">#' + esc(t) + '<span>' + n + '</span></button>').join('')
-      : '<p class="muted small">タグはまだありません</p>';
+      : '';
+    $('#tagSection').hidden = !tags.length;
     const st = computeStreaks();
     $('#sideFoot').innerHTML =
-      '<div class="streak-mini" title="連続記録">🔥 <b>' + st.current + '</b>日連続</div>' +
-      '<div class="muted small">' + state.entries.size + ' 件の記録' + (state.key ? ' · 🔒 暗号化' : '') + '</div>';
+      '<div class="muted small">' + (st.current > 1 ? st.current + '日つづいています · ' : '') + state.entries.size + '件' + (state.key ? ' · 🔒' : '') + '</div>';
   }
 
   /* ================= ホーム ================= */
@@ -320,10 +336,10 @@
     return '<article class="entry-card" data-id="' + esc(e.id) + '" tabindex="0">' +
       '<div class="ec-side"><div class="ec-day">' + parseDate(e.date).getDate() + '</div><div class="ec-wd">' + WEEK[parseDate(e.date).getDay()] + '</div></div>' +
       '<div class="ec-body">' +
-      '<div class="ec-meta">' + fmtDate(e.date) + ' · ' + fmtTime(e.createdAt) + (e.favorite ? ' · <span class="star">★</span>' : '') + '</div>' +
+      '<div class="ec-meta">' + (e.date === todayStr() ? '' : fmtDate(e.date, parseDate(e.date).getFullYear() !== new Date().getFullYear()) + ' · ') + fmtTime(e.createdAt) + (e.favorite ? ' · <span class="star">★</span>' : '') + '</div>' +
       '<h3>' + (e.kind !== 'free' ? '<span class="kind-badge kind-' + e.kind + '">' + KIND_LABEL(e.kind) + '</span>' : '') + highlight(title, terms) + '</h3>' +
       (e.kind === 'checkin' ? '' : '<p>' + highlight(excerpt(e, terms), terms) + '</p>') +
-      (e.tags.length || e.energy || e.emotions.length ? '<div class="ec-tags">' + (e.energy ? '<span class="ec-energy">⚡' + e.energy + '</span>' : '') + e.emotions.slice(0, 4).map((w) => '<span class="ec-emo emo-' + emoGroup(w) + '">' + esc(w) + '</span>').join('') + e.tags.map((t) => '<span>#' + esc(t) + '</span>').join('') + '</div>' : '') +
+      (e.tags.length || e.emotions.length ? '<div class="ec-tags">' + e.emotions.slice(0, 3).map((w) => '<span class="ec-emo emo-' + emoGroup(w) + '">' + esc(w) + '</span>').join('') + e.tags.map((t) => '<span>#' + esc(t) + '</span>').join('') + '</div>' : '') +
       '</div>' +
       (mood ? '<div class="ec-mood mood-' + mood.v + '" title="' + mood.l + '">' + mood.e + '</div>' : '') +
       '</article>';
@@ -341,106 +357,62 @@
     const all = sorted();
     const todays = all.filter((e) => e.date === today);
     const st = computeStreaks();
-    const ws = workStats();
     const rec = recommendedFlow();
     const morning = ofKind('morning', today)[0];
-    const shutdown = ofKind('shutdown', today)[0];
-    const checkins = ofKind('checkin', today);
-    const mit = mitText(morning);
+    const night = ofKind('shutdown', today)[0];
+    const moments = ofKind('checkin', today);
+    const intention = morning && morning.data ? morning.data.intention || morning.data.mit : '';
+    const lookforward = morning && morning.data ? morning.data.lookforward : '';
+    const goods = goodBetween(addDays(today, -13), today).slice(0, 6);
+    const care = state.careDismissed === today ? null : careSignal();
     const md = today.slice(5);
-    const onThisDay = all.filter((e) => e.date !== today && e.kind === 'free' && (e.date.slice(5) === md || e.date === addDays(today, -7) || e.date === addDays(today, -30)));
-    const recentWins = winsBetween(addDays(today, -13), today).slice(0, 8);
-    const lastEnergy = all.find((e) => e.energy);
-    const prompt = PROMPTS[state.promptIdx % PROMPTS.length];
-    const t = reminderTimes();
-    const care = state.careDismissed === todayStr() ? null : careSignal();
+    const memory = all.find((e) => e.date < today && e.date.slice(5) === md) || all.find((e) => e.date === addDays(today, -30) && e.kind !== 'checkin');
+    const f = rec ? FLOWS[rec] : null;
 
-    const step = (id, status, sub) => {
-      const f = FLOWS[id];
-      return '<button class="wf-card' + (rec === id ? ' rec' : '') + (status === 'done' ? ' done' : '') + '" data-flow="' + id + '">' +
-        (rec === id ? '<span class="wf-rec">いまおすすめ</span>' : '') +
-        '<span class="wf-icon">' + (status === 'done' ? '✅' : f.icon) + '</span>' +
-        '<span class="wf-name">' + esc(f.short) + '</span>' +
-        '<span class="wf-sub">' + sub + '</span></button>';
-    };
+    const rhythm = (id, done, sub) => '<button class="rhythm' + (done ? ' done' : '') + '" data-flow="' + id + '"><span class="r-icon">' + FLOWS[id].icon + '</span><span class="r-name">' + FLOWS[id].short + '</span><span class="r-sub">' + sub + '</span></button>';
 
     $('#main').innerHTML =
       '<div class="view home">' +
-      '<header class="view-head"><div><p class="eyebrow">' + fmtDate(today) + (isWorkday() ? '' : ' · おやすみの日') + '</p><h1>' + greeting() + '</h1></div></header>' +
+      '<header class="home-head"><p class="eyebrow">' + fmtDate(today) + '</p><h1>' + greeting() + '</h1></header>' +
 
-      (mit ? '<label class="mit-home' + (mitDone(morning) ? ' done' : '') + '"><input type="checkbox" id="mitCheck"' + (mitDone(morning) ? ' checked' : '') + '><span><small>🎯 今日の「1つ」</small>' + esc(mit) + '</span></label>' : '') +
+      (care ? '<section class="note-card care"><p><b>少ししんどい日みたいですね。</b><br>気持ちに名前をつけて、自分にやさしい言葉をかけてみませんか。</p>' +
+        '<div class="row gap wrap"><button class="btn primary small" data-flow="reset">🫧 こころのケア</button><button class="btn ghost small" id="careDismiss">あとで</button></div></section>' : '') +
 
-      (care ? '<section class="card care-card"><div class="care-text"><b>少ししんどそうな記録がありました（' + fmtTime(care.createdAt) + '）</b><p>気持ちに名前をつけて距離をとると、感情の波が落ち着きやすくなります。無理のない範囲でどうぞ。</p></div>' +
-        '<div class="row gap wrap"><button class="btn primary small" data-flow="reset">🌀 3分リセット</button><button class="btn small" data-flow="expressive">📝 書き出す</button><button class="btn ghost small" id="careDismiss">今はいい</button></div></section>' : '') +
-      (backupDue() ? '<section class="card backup-card"><span>💾 記録は<b>この端末のブラウザだけ</b>に保存されています。万一に備えてバックアップを。</span><button class="btn small" data-goto="settings">バックアップする</button></section>' : '') +
-      '<section class="workflow"><div class="section-head"><h2>今日のワークフロー</h2><button class="btn small ghost" data-goto="guide">📖 使い方と根拠</button></div>' +
-      '<div class="wf-row">' +
-      step('morning', morning ? 'done' : '', morning ? fmtTime(morning.createdAt) + ' 完了' : esc(t.morning) + ' · 3分') +
-      step('checkin', '', checkins.length ? checkins.length + '回 記録' : '何回でも · 1分') +
-      step('shutdown', shutdown ? 'done' : '', shutdown ? fmtTime(shutdown.createdAt) + ' 完了' : esc(t.shutdown) + ' · 5分') +
+      (f ? '<button class="hero-card" data-flow="' + f.id + '"><span class="hc-icon">' + f.icon + '</span><span class="hc-text"><small>いまのおすすめ・' + f.minutes + '分</small><b>' + esc(f.name) + '</b><span>' + esc(f.sub) + '</span></span><span class="hc-go" aria-hidden="true">→</span></button>'
+        : '<div class="hero-card calm"><span class="hc-icon">🌿</span><span class="hc-text"><b>今日の記録はそろいました</b><span>ゆっくり休んでくださいね。</span></span></div>') +
+
+      '<div class="rhythm-row">' +
+      rhythm('morning', !!morning, morning ? '済み' : '2分') +
+      rhythm('checkin', false, moments.length ? moments.length + '回' : 'いつでも') +
+      rhythm('shutdown', !!night, night ? '済み' : '3分') +
       '</div>' +
-      '<div class="wf-more">' +
-      ['reset', 'weekly', 'expressive'].map((id) => '<button class="pill-btn' + (rec === id ? ' rec' : '') + '" data-flow="' + id + '">' + FLOWS[id].icon + ' ' + esc(FLOWS[id].short === '書き出し' ? '書き出し 15分' : FLOWS[id].name) + '</button>').join('') +
-      '<button class="pill-btn" id="homeNew">✍️ 自由に書く</button></div>' +
-      '</section>' +
 
-      '<section class="tiles">' +
-      tile('🔥', st.current + '<small>日</small>', '連続記録', st.wroteToday ? '今日も記録できました' : (st.current ? '今日記録すると ' + (st.current + 1) + ' 日に' : '今日から始めよう')) +
-      tile('🏆', ws.weekWins + '<small>件</small>', '今週の前進', '小さな前進もカウント') +
-      tile('🎯', ws.mitRate == null ? '—' : ws.mitRate + '<small>%</small>', '「1つ」の達成率', ws.mitN ? '直近30日・' + ws.mitN + '日分' : '始業前に設定しよう') +
-      tile('⚡', lastEnergy ? lastEnergy.energy + '<small>/5</small>' : '—', '最新のエネルギー', lastEnergy ? relDays(lastEnergy.date) + ' ' + fmtTime(lastEnergy.createdAt) : 'チェックインで記録') +
-      '</section>' +
+      (intention ? '<section class="note-card intention"><small>今日大切にしたいこと</small><p>' + esc(intention) + '</p>' + (lookforward ? '<small>楽しみ</small><p>' + esc(lookforward) + '</p>' : '') + '</section>' : '') +
 
-      (recentWins.length ? '<section class="section"><div class="section-head"><h2>🏆 最近の前進</h2><span class="muted small">前進を見返すことが、次のやる気になります</span></div>' +
-        '<div class="wins-wall">' + recentWins.map((w) => '<button class="win-chip" data-id="' + esc(w.id) + '"><small>' + Number(w.date.slice(5, 7)) + '/' + Number(w.date.slice(8)) + '</small>' + esc(w.text) + '</button>').join('') + '</div></section>' : '') +
+      (goods.length ? '<section class="section"><h2 class="section-title">最近のよかったこと</h2><ul class="good-list">' +
+        goods.map((g) => '<li><button data-id="' + esc(g.id) + '"><span>' + esc(g.text) + '</span><small>' + relDays(g.date) + '</small></button></li>').join('') + '</ul></section>' : '') +
 
-      '<section class="section"><div class="section-head"><h2>今日の記録</h2></div>' +
-      (todays.length ? '<div class="cards">' + todays.map((e) => entryCard(e)).join('') + '</div>'
-        : '<div class="empty"><p>今日はまだ記録がありません。' + (rec ? '「' + esc(FLOWS[rec].name) + '」から始めましょう。' : '') + '</p>' +
-          (rec ? '<button class="btn primary" data-flow="' + rec + '">' + FLOWS[rec].icon + ' ' + esc(FLOWS[rec].name) + '（' + FLOWS[rec].minutes + '分）</button>' : '') + '</div>') +
-      '</section>' +
+      (todays.length ? '<section class="section"><h2 class="section-title">今日の記録</h2><div class="cards">' + todays.map((e) => entryCard(e)).join('') + '</div></section>' : '') +
 
-      '<section class="card prompt-card">' +
-      '<div class="prompt-label">💡 自由記述のお題</div>' +
-      '<p class="prompt-text">' + esc(prompt) + '</p>' +
-      '<div class="row gap wrap"><button class="btn primary" id="usePrompt">このお題で書く</button><button class="btn ghost" id="shufflePrompt">🔀 別のお題</button>' +
-      '<div class="dropdown"><button class="btn ghost" id="homeTplBtn">📋 テンプレート</button><div class="menu" id="homeTplMenu" hidden>' +
-      TEMPLATES.map((x) => '<button data-tpl="' + x.id + '">' + x.icon + ' ' + esc(x.name) + '</button>').join('') + '</div></div></div>' +
-      '</section>' +
+      (memory ? '<section class="section"><h2 class="section-title">' + relDays(memory.date) + 'のあなた</h2><div class="cards">' + entryCard(memory) + '</div></section>' : '') +
 
-      (onThisDay.length ? '<section class="section"><div class="section-head"><h2>🕰️ 振り返り</h2><span class="muted small">1週間前・1か月前・過去の今日</span></div>' +
-        '<div class="cards">' + onThisDay.map((e) => '<div class="ago-label">' + relDays(e.date) + '</div>' + entryCard(e)).join('') + '</div></section>' : '') +
+      (!all.length ? '<section class="welcome"><h2>はじめまして</h2>' +
+        '<p>綴は、短い問いに答えていくだけで、気持ちを整え、毎日の中のよいことに気づけるジャーナルです。</p>' +
+        '<p>まずは今夜、<b>よかったことを3つ</b>書くところから始めてみてください。</p>' +
+        '<p class="muted small">記録はこの端末のブラウザの中だけに保存され、どこにも送信されません。</p>' +
+        '<button class="btn ghost small" data-goto="guide">くわしく見る</button></section>' : '') +
 
-      (!all.length ? '<section class="card welcome"><h2>綴 Tsuzuri へようこそ 👋</h2>' +
-        '<p>仕事の前・最中・後に、短い問いに答えていくだけのワークジャーナルです。</p>' +
-        '<ul><li><b>☀️ 始業前（3分）</b>：今日いちばん大事な「1つ」と、つまずいた時の作戦を決める</li>' +
-        '<li><b>⚡ チェックイン（1分）</b>：前進・つまずき・気づきと、そのときの状態を記録</li>' +
-        '<li><b>🌙 終業後（5分）</b>：前進と学びを確かめ、やり残しを書き出して仕事を閉じる</li>' +
-        '<li>データは<b>このブラウザの中だけ</b>に保存され、サーバーには送信されません。</li></ul>' +
-        '<div class="row gap wrap"><button class="btn primary" data-flow="' + (rec || 'checkin') + '">はじめる</button><button class="btn" data-goto="guide">📖 なぜ効くの？</button><button class="btn ghost" data-goto="settings">⏰ 勤務時間を設定</button></div></section>' : '') +
+      (backupDue() ? '<section class="note-card"><p>記録はこの端末だけに保存されています。ときどきバックアップしておくと安心です。</p><button class="btn small" data-goto="settings">バックアップする</button></section>' : '') +
+
+      (st.current > 1 ? '<p class="streak-line">' + st.current + '日つづいています</p>' : '') +
       '</div>';
 
     const main = $('#main');
     bindCards(main);
     $$('[data-flow]', main).forEach((b) => (b.onclick = () => startFlow(b.dataset.flow)));
     $$('[data-goto]', main).forEach((b) => (b.onclick = () => go(b.dataset.goto)));
-    $$('.win-chip', main).forEach((b) => (b.onclick = () => openEntry(b.dataset.id)));
+    $$('.good-list button', main).forEach((b) => (b.onclick = () => openEntry(b.dataset.id)));
     const cd = $('#careDismiss'); if (cd) cd.onclick = () => { state.careDismissed = todayStr(); renderHome(); };
-    $('#homeNew').onclick = () => writeNew();
-    $('#usePrompt').onclick = () => writeNew(todayStr(), { body: '> ' + prompt + '\n\n' });
-    $('#shufflePrompt').onclick = () => { state.promptIdx = (state.promptIdx + 1 + Math.floor(Math.random() * (PROMPTS.length - 1))) % PROMPTS.length; renderHome(); };
-    const tm = $('#homeTplMenu');
-    $('#homeTplBtn').onclick = (ev) => { ev.stopPropagation(); tm.hidden = !tm.hidden; };
-    $$('[data-tpl]', tm).forEach((b) => (b.onclick = () => {
-      const x = TEMPLATES.find((y) => y.id === b.dataset.tpl);
-      writeNew(todayStr(), { body: x.body, tags: x.tags || [] });
-    }));
-    const mc = $('#mitCheck');
-    if (mc) mc.onchange = async () => {
-      await setMitDone(morning, mc.checked);
-      if (mc.checked) toast('🎉 今日の「1つ」を達成！ これが一番のやる気の源です');
-      renderHome();
-    };
   }
 
   function tile(icon, value, label, sub) {
@@ -453,14 +425,15 @@
     const terms = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const list = filteredEntries();
     let html = '<div class="view list">' +
-      '<header class="view-head"><div><p class="eyebrow">' + (f.q ? '「' + esc(f.q) + '」の検索結果' : 'アーカイブ') + '</p><h1>すべての記録 <small class="muted">' + list.length + '件</small></h1></div></header>' +
+      '<header class="view-head"><div><p class="eyebrow">' + (f.q ? '「' + esc(f.q) + '」の検索結果' : 'これまでの記録') + '</p><h1>記録 <small class="muted">' + list.length + '件</small></h1></div></header>' +
       '<div class="filters">' +
-      MOODS.map((m) => '<button class="chip' + (f.mood === m.v ? ' active' : '') + '" data-mood="' + m.v + '" title="' + m.l + '">' + m.e + '</button>').join('') +
-      '<button class="chip' + (f.fav ? ' active' : '') + '" id="favFilter">★ お気に入り</button>' +
-      '<span class="chip-sep"></span>' +
-      ['morning', 'checkin', 'shutdown', 'reset', 'weekly', 'expressive', 'free'].map((k) => '<button class="chip' + (f.kind === k ? ' active' : '') + '" data-kind="' + k + '">' + (k === 'free' ? '✍️ 自由記述' : KIND_LABEL(k)) + '</button>').join('') +
+      '<select class="input select-sm" id="fKind" aria-label="種類"><option value="">すべての種類</option>' +
+      ['morning', 'checkin', 'shutdown', 'reset', 'expressive', 'future', 'weekly', 'free'].map((k) => '<option value="' + k + '"' + (f.kind === k ? ' selected' : '') + '>' + (k === 'free' ? '✍️ 自由に書いたもの' : FLOWS[k].icon + ' ' + FLOWS[k].name) + '</option>').join('') + '</select>' +
+      '<select class="input select-sm" id="fMood" aria-label="気分"><option value="">すべての気分</option>' +
+      MOODS.map((m) => '<option value="' + m.v + '"' + (f.mood === m.v ? ' selected' : '') + '>' + m.e + ' ' + m.l + '</option>').join('') + '</select>' +
+      '<button class="chip' + (f.fav ? ' active' : '') + '" id="favFilter">★</button>' +
       (f.tag ? '<button class="chip active" id="clearTag">#' + esc(f.tag) + ' ✕</button>' : '') +
-      (f.q || f.tag || f.mood || f.fav || f.kind ? '<button class="chip ghost" id="clearAll">条件をクリア</button>' : '') +
+      (f.q || f.tag || f.mood || f.fav || f.kind ? '<button class="chip ghost" id="clearAll">クリア</button>' : '') +
       '</div>';
 
     if (!list.length) {
@@ -483,9 +456,9 @@
     const main = $('#main');
     main.innerHTML = html;
     bindCards(main);
-    $$('[data-mood]', main).forEach((b) => (b.onclick = () => { const v = +b.dataset.mood; f.mood = f.mood === v ? null : v; renderList(); }));
+    $('#fMood').onchange = (ev) => { f.mood = +ev.target.value || null; renderList(); };
+    $('#fKind').onchange = (ev) => { f.kind = ev.target.value || null; renderList(); };
     $('#favFilter').onclick = () => { f.fav = !f.fav; renderList(); };
-    $$('[data-kind]', main).forEach((b) => (b.onclick = () => { f.kind = f.kind === b.dataset.kind ? null : b.dataset.kind; renderList(); }));
     const ct = $('#clearTag'); if (ct) ct.onclick = () => { f.tag = null; renderList(); renderSidebar(); };
     const ca = $('#clearAll'); if (ca) ca.onclick = () => { Object.assign(f, { q: '', tag: null, mood: null, fav: false, kind: null }); $('#searchInput').value = ''; renderList(); renderSidebar(); };
     const en = $('#emptyNew'); if (en) en.onclick = () => writeNew();
@@ -553,16 +526,14 @@
     bindCards(main);
   }
 
-  /* ================= インサイト ================= */
+  /* ================= こころの傾向 ================= */
   function renderStats() {
     const all = sorted();
     const st = computeStreaks();
     const map = byDate();
     const today = todayStr();
     const goal = state.settings.dailyGoal || 400;
-    const totalChars = all.reduce((s, e) => s + chars(e.body), 0);
     const moods = all.filter((e) => e.mood);
-    const avgMood = moods.length ? moods.reduce((s, e) => s + e.mood, 0) / moods.length : 0;
 
     // ヒートマップ（直近53週）
     const end = parseDate(today);
@@ -610,108 +581,69 @@
     const xlabels = [0, 7, 14, 21, 29].map((i) => '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle" class="axis-label">' + Number(pts[i].ds.slice(5, 7)) + '/' + Number(pts[i].ds.slice(8)) + '</text>').join('');
     const moodChart = moods.length
       ? '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="直近30日の気分の推移">' + grid + xlabels + '<path d="' + path + '" class="mood-line"/>' + dots + '</svg>'
-      : '<p class="muted">気分を記録すると、ここに推移が表示されます。</p>';
+      : '<p class="muted">気分を残していくと、ここに流れが表示されます。</p>';
 
-    // 気分分布
-    const moodCounts = MOODS.map((m) => ({ m, n: moods.filter((e) => e.mood === m.v).length }));
-    const moodMax = Math.max(1, ...moodCounts.map((x) => x.n));
-    const moodBars = moodCounts.map(({ m, n }) =>
-      '<div class="hbar"><span class="hbar-label">' + m.e + ' ' + m.l + '</span><span class="hbar-track"><span class="hbar-fill mood-fill-bg-' + m.v + '" style="width:' + (n / moodMax) * 100 + '%"></span></span><span class="hbar-val">' + n + '</span></div>').join('');
-
-    // 曜日別・時間帯別
-    const wd = Array(7).fill(0);
-    const hours = Array(24).fill(0);
+    // 曜日ごとの気分
     const wdMood = Array.from({ length: 7 }, () => []);
-    for (const e of all) {
-      const d = parseDate(e.date).getDay();
-      wd[d]++;
-      if (e.mood) wdMood[d].push(e.mood);
-      hours[new Date(e.createdAt).getHours()]++;
-    }
-    const wdMax = Math.max(1, ...wd);
-    const wdBars = wd.map((n, i) => {
-      const ms = wdMood[i];
-      const avg = ms.length ? (ms.reduce((a, b) => a + b, 0) / ms.length) : null;
-      return '<div class="vbar" title="' + WEEK[i] + '曜日 ' + n + '件' + (avg ? ' / 平均気分 ' + avg.toFixed(1) : '') + '"><span class="vbar-fill" style="height:' + (n / wdMax) * 100 + '%"></span><span class="vbar-label">' + WEEK[i] + '</span><span class="vbar-mood">' + (avg ? moodOf(Math.round(avg)).e : '') + '</span></div>';
-    }).join('');
-    const hMax = Math.max(1, ...hours);
-    const hourBars = hours.map((n, i) => '<div class="vbar thin" title="' + i + '時台 ' + n + '件"><span class="vbar-fill" style="height:' + (n / hMax) * 100 + '%"></span><span class="vbar-label">' + (i % 6 === 0 ? i : '') + '</span></div>').join('');
+    for (const e of all) if (e.mood) wdMood[parseDate(e.date).getDay()].push(e.mood);
+    const wdOrder = Array.from({ length: 7 }, (_, i) => (i + state.settings.weekStart) % 7);
+    const wdRow = wdMood.some((x) => x.length)
+      ? '<div class="week-mood">' + wdOrder.map((i) => { const a = avg(wdMood[i]); return '<div class="wm-day" title="' + WEEK[i] + '曜日' + (a ? ' 平均 ' + a.toFixed(1) : '') + '"><span class="wm-face' + (a ? '' : ' none') + '">' + (a ? moodOf(Math.round(a)).e : '·') + '</span><span class="wm-label">' + WEEK[i] + '</span><span class="wm-val">' + (a ? a.toFixed(1) : '') + '</span></div>'; }).join('') + '</div>'
+      : '<p class="muted">気分を残していくと、曜日ごとの傾向が見えてきます。</p>';
 
-    // タグ × 気分
-    const tagStats = allTags().slice(0, 15).map(([t, n]) => {
-      const ms = all.filter((e) => e.tags.includes(t) && e.mood).map((e) => e.mood);
-      return { t, n, avg: ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : null };
-    });
-    const tagMax = Math.max(1, ...tagStats.map((x) => x.n));
-    const tagBars = tagStats.length ? tagStats.map(({ t, n, avg }) =>
-      '<div class="hbar"><span class="hbar-label">#' + esc(t) + '</span><span class="hbar-track"><span class="hbar-fill" style="width:' + (n / tagMax) * 100 + '%"></span></span><span class="hbar-val">' + n + (avg ? ' ' + moodOf(Math.round(avg)).e : '') + '</span></div>').join('')
-      : '<p class="muted">タグを付けると、ここに集計されます。</p>';
-
-    // よく使う言葉（2文字以上のカタカナ・漢字・英単語）
+    // よく使う言葉
     const freq = new Map();
-    const stop = new Set(['こと', 'もの', 'ため', 'よう', 'それ', 'これ', 'the', 'and', 'for', 'that', 'with', 'this']);
+    const stop = new Set(['こと', 'もの', 'ため', 'よう', 'それ', 'これ', '今日', '自分', 'the', 'and', 'for', 'that', 'with', 'this']);
     for (const e of all) {
       const words = (e.title + ' ' + MD.plain(e.body)).match(/[一-龯々]{2,}|[ァ-ヴー]{2,}|[A-Za-z]{3,}/g) || [];
       for (const w of words) { const k = w.toLowerCase(); if (!stop.has(k)) freq.set(k, (freq.get(k) || 0) + 1); }
     }
-    const topWords = Array.from(freq.entries()).filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]).slice(0, 30);
+    const topWords = Array.from(freq.entries()).filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]).slice(0, 24);
     const wMax = topWords.length ? topWords[0][1] : 1;
     const cloud = topWords.length
-      ? topWords.map(([w, n]) => '<button class="word" data-word="' + esc(w) + '" style="font-size:' + (0.85 + (n / wMax) * 1.1).toFixed(2) + 'rem">' + esc(w) + '</button>').join('')
+      ? topWords.map(([w, n]) => '<button class="word" data-word="' + esc(w) + '" style="font-size:' + (0.85 + (n / wMax) * 0.9).toFixed(2) + 'rem">' + esc(w) + '</button>').join('')
       : '<p class="muted">記録が増えると、よく使う言葉が表示されます。</p>';
 
-    // ワーク指標
-    const wsx = workStats();
+    // 直近30日
+    const ws = wellStats();
     const from30 = addDays(today, -29);
     const recent30 = all.filter((e) => e.date >= from30);
     const hourE = Array.from({ length: 24 }, () => []);
     for (const e of recent30) if (e.energy) hourE[new Date(e.createdAt).getHours()].push(e.energy);
     const hours2 = []; for (let h = 6; h <= 23; h++) hours2.push(h);
-    const hasHourE = hourE.some((x) => x.length);
-    const energyHours = hasHourE
-      ? '<div class="vbars hours energy-hours">' + hours2.map((h) => { const a = avg(hourE[h]); return '<div class="vbar thin" title="' + h + '時台 ' + (a ? '平均 ' + a.toFixed(1) + '（' + hourE[h].length + '件）' : '記録なし') + '"><span class="vbar-fill energy-fill" style="height:' + (a ? a * 20 : 0) + '%"></span><span class="vbar-label">' + (h % 3 === 0 ? h : '') + '</span></div>'; }).join('') + '</div>'
-      : '<p class="muted">チェックインでエネルギーを記録すると、1日のどの時間帯に調子が良いかが分かります。</p>';
+    const energyHours = hourE.some((x) => x.length)
+      ? '<div class="vbars hours">' + hours2.map((h) => { const a = avg(hourE[h]); return '<div class="vbar thin" title="' + h + '時台 ' + (a ? '平均 ' + a.toFixed(1) : '記録なし') + '"><span class="vbar-fill" style="height:' + (a ? a * 20 : 0) + '%"></span><span class="vbar-label">' + (h % 3 === 0 ? h : '') + '</span></div>'; }).join('') + '</div>'
+      : '';
     const emoCount = new Map();
     for (const e of recent30) for (const w of e.emotions) emoCount.set(w, (emoCount.get(w) || 0) + 1);
-    const emoTop = Array.from(emoCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 14);
+    const emoTop = Array.from(emoCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const groupN = { hp: 0, lp: 0, hn: 0, ln: 0 };
+    for (const [w, n] of emoCount) { const g = emoGroup(w); if (g in groupN) groupN[g] += n; }
+    const gTotal = Object.values(groupN).reduce((a, b) => a + b, 0);
     const emoHtml = emoTop.length
-      ? '<div class="emo-stats">' + emoTop.map(([w, n]) => '<span class="emo-chip on emo-' + emoGroup(w) + '">' + esc(w) + ' <b>' + n + '</b></span>').join('') + '</div>' +
-        '<p class="muted small">快・不快の比率：' + (() => { let p = 0, q = 0; emoTop.forEach(([w, n]) => { const g = emoGroup(w); if (g === 'hp' || g === 'lp') p += n; else if (g === 'hn' || g === 'ln') q += n; }); return p + q ? Math.round((p / (p + q)) * 100) + '% が快の感情' : '—'; })() + '</p>'
-      : '<p class="muted">感情を記録すると、ここに傾向が表示されます。</p>';
-    const workHtml =
-      '<h2 class="month-head">💼 ワーク（直近30日）</h2>' +
-      '<section class="tiles">' +
-      tile('🏆', wsx.weekWins + '<small>件</small>', '今週の前進', '月曜から今日まで') +
-      tile('🎯', wsx.mitRate == null ? '—' : wsx.mitRate + '<small>%</small>', '「1つ」の達成率', wsx.mitN + '日分の始業前から') +
-      tile('⚡', wsx.avgEnergy ? wsx.avgEnergy.toFixed(1) + '<small>/5</small>' : '—', '平均エネルギー', '記録のあった全エントリー') +
-      tile('🌙', wsx.shutdownDays + '<small>日</small>', '終業シャットダウン', '始業前 ' + wsx.morningDays + ' 日') +
-      '</section>' +
-      '<div class="grid-2">' +
-      '<section class="card"><h2>⚡ 時間帯別のエネルギー</h2>' + energyHours + '</section>' +
-      '<section class="card"><h2>🎭 よく感じた感情</h2>' + emoHtml + '</section>' +
-      '</div>' +
-      '<h2 class="month-head">📚 記録全体</h2>';
+      ? (gTotal ? '<div class="emo-balance">' + EMOTIONS.map((g) => groupN[g.g] ? '<span class="emo-' + g.g + '" style="flex:' + groupN[g.g] + '" title="' + g.l + ' ' + Math.round((groupN[g.g] / gTotal) * 100) + '%"></span>' : '').join('') + '</div>' +
+        '<div class="emo-legend">' + EMOTIONS.map((g) => '<span class="emo-' + g.g + '"><i></i>' + g.l + ' ' + Math.round((groupN[g.g] / gTotal) * 100) + '%</span>').join('') + '</div>' : '') +
+        '<div class="emo-stats">' + emoTop.map(([w, n]) => '<span class="emo-chip on emo-' + emoGroup(w) + '">' + esc(w) + ' <b>' + n + '</b></span>').join('') + '</div>'
+      : '<p class="muted">気持ちに名前をつけていくと、ここに表示されます。</p>';
 
+    const stat = (v, l) => '<div class="mini-stat"><b>' + v + '</b><span>' + l + '</span></div>';
     $('#main').innerHTML =
       '<div class="view stats">' +
-      '<header class="view-head"><div><p class="eyebrow">インサイト</p><h1>あなたの記録の傾向</h1></div></header>' +
-      workHtml +
-      '<section class="tiles">' +
-      tile('📚', all.length + '<small>件</small>', '総エントリー', st.days + ' 日分') +
-      tile('🔥', st.current + '<small>日</small>', '現在の連続記録', '最長 ' + st.longest + ' 日') +
-      tile('✍️', totalChars.toLocaleString() + '<small>字</small>', '総文字数', '平均 ' + (all.length ? Math.round(totalChars / all.length) : 0) + ' 字/件') +
-      tile('🌤️', avgMood ? moodOf(Math.round(avgMood)).e + ' <small>' + avgMood.toFixed(1) + '</small>' : '—', '平均の気分', moods.length + ' 件の記録から') +
+      '<header class="view-head"><div><p class="eyebrow">こころの傾向</p><h1>最近のあなた</h1></div></header>' +
+      '<section class="mini-stats">' +
+      stat(ws.weekGood + '<small>つ</small>', '今週のよかったこと') +
+      stat(ws.avgMood ? moodOf(Math.round(ws.avgMood)).e + ' <small>' + ws.avgMood.toFixed(1) + '</small>' : '—', '30日の気分の平均') +
+      stat(st.days + '<small>日</small>', '記録した日') +
       '</section>' +
-      '<section class="card"><h2>📆 1年間の記録</h2><div class="heatmap-wrap"><div class="heatmap-months">' + monthsRow + '</div><div class="heatmap">' + heat + '</div></div>' +
-      '<div class="heat-legend">少ない <i class="hm l0"></i><i class="hm l1"></i><i class="hm l2"></i><i class="hm l3"></i><i class="hm l4"></i> 多い（目標 ' + goal + ' 字基準）</div></section>' +
-      '<section class="card"><h2>🌈 直近30日の気分</h2>' + moodChart + '</section>' +
+      '<section class="card"><h2>気分の流れ <small class="muted">30日</small></h2>' + moodChart + '</section>' +
+      '<section class="card"><h2>よく感じた気持ち <small class="muted">30日</small></h2>' + emoHtml + '</section>' +
       '<div class="grid-2">' +
-      '<section class="card"><h2>気分の分布</h2>' + moodBars + '</section>' +
-      '<section class="card"><h2>曜日別の記録</h2><div class="vbars">' + wdBars + '</div></section>' +
-      '<section class="card"><h2>書く時間帯</h2><div class="vbars hours">' + hourBars + '</div></section>' +
-      '<section class="card"><h2>タグと気分</h2>' + tagBars + '</section>' +
+      '<section class="card"><h2>曜日ごとの気分</h2>' + wdRow + '</section>' +
+      (energyHours ? '<section class="card"><h2>時間帯ごとの元気さ</h2>' + energyHours + '</section>' : '<section class="card"><h2>よく使う言葉</h2><div class="cloud">' + cloud + '</div></section>') +
       '</div>' +
-      '<section class="card"><h2>💬 よく使う言葉</h2><div class="cloud">' + cloud + '</div></section>' +
+      '<section class="card"><h2>1年のあゆみ</h2><div class="heatmap-wrap"><div class="heatmap-months">' + monthsRow + '</div><div class="heatmap">' + heat + '</div></div>' +
+      '<div class="heat-legend">少ない <i class="hm l0"></i><i class="hm l1"></i><i class="hm l2"></i><i class="hm l3"></i><i class="hm l4"></i> 多い</div></section>' +
+      (energyHours ? '<section class="card"><h2>よく使う言葉</h2><div class="cloud">' + cloud + '</div></section>' : '') +
       '</div>';
 
     $$('.word', $('#main')).forEach((b) => (b.onclick = () => {
@@ -729,31 +661,27 @@
 
     $('#main').innerHTML =
       '<div class="view settings">' +
-      '<header class="view-head"><div><p class="eyebrow">設定</p><h1>設定とデータ</h1></div></header>' +
+      '<header class="view-head"><div><p class="eyebrow">設定</p><h1>設定</h1></div></header>' +
 
-      '<section class="card"><h2>🎨 表示</h2>' +
+      '<section class="card"><h2>表示</h2>' +
       '<div class="form-row"><label>テーマ</label><select class="input" id="sTheme">' + opt('system', s.theme, 'システムに合わせる') + opt('light', s.theme, 'ライト') + opt('dark', s.theme, 'ダーク') + opt('sepia', s.theme, 'セピア') + '</select></div>' +
       '<div class="form-row"><label>本文フォント</label><select class="input" id="sFont">' + opt('sans', s.font, 'ゴシック') + opt('serif', s.font, '明朝') + opt('mono', s.font, '等幅') + '</select></div>' +
       '<div class="form-row"><label>文字サイズ <output id="sizeOut">' + s.fontSize + 'px</output></label><input type="range" min="14" max="24" id="sSize" value="' + s.fontSize + '"></div>' +
       '<div class="form-row"><label>週の始まり</label><select class="input" id="sWeek">' + opt(0, s.weekStart, '日曜日') + opt(1, s.weekStart, '月曜日') + '</select></div>' +
-      '<div class="form-row"><label>1日の目標文字数</label><input class="input" type="number" min="0" step="50" id="sGoal" value="' + s.dailyGoal + '"></div>' +
-      '<div class="form-row"><label>スペルチェック</label><input type="checkbox" id="sSpell"' + (s.spellcheck ? ' checked' : '') + '></div>' +
       '</section>' +
 
-      '<section class="card"><h2>💼 働き方とリマインダー</h2>' +
-      '<div class="form-row"><label>始業時刻</label><input class="input" type="time" id="sWorkStart" value="' + esc(s.workStart) + '"></div>' +
-      '<div class="form-row"><label>終業時刻</label><input class="input" type="time" id="sWorkEnd" value="' + esc(s.workEnd) + '"></div>' +
-      '<div class="form-row"><label>勤務日</label><div class="wd-pick">' + [1, 2, 3, 4, 5, 6, 0].map((d) => '<label class="wd"><input type="checkbox" data-wd="' + d + '"' + (s.workdays.includes(d) ? ' checked' : '') + '><span>' + WEEK[d] + '</span></label>').join('') + '</div></div>' +
-      '<p class="muted small">時刻にあわせて、ホームに「いまおすすめ」のセッションが表示されます。</p>' +
-      '<div class="reminder-box"><b>📅 カレンダーにリマインダーを登録（おすすめ）</b>' +
-      '<p class="muted small">始業前・終業時・金曜の週次レビューの予定（通知つき・毎週繰り返し）を .ics ファイルで書き出します。iPhone / Android / Google カレンダー / Outlook で開くと登録でき、予定のリンクからそのセッションを直接開けます。</p>' +
-      '<button class="btn" id="exportIcs">📅 カレンダー用ファイルを書き出し</button></div>' +
-      '<div class="reminder-box"><b>🔔 ブラウザ通知</b>' +
-      '<p class="muted small">このアプリをタブやホーム画面アプリで開いている間、始業時刻と終業15分前に通知します。</p>' +
-      '<label class="row gap"><input type="checkbox" id="sNotify"' + (s.notify ? ' checked' : '') + '> 通知を使う</label></div>' +
+      '<section class="card"><h2>リマインダー</h2>' +
+      '<div class="form-row"><label>朝のひととき</label><input class="input" type="time" id="sMorning" value="' + esc(s.morningTime) + '"></div>' +
+      '<div class="form-row"><label>夜のふりかえり</label><input class="input" type="time" id="sEvening" value="' + esc(s.eveningTime) + '"></div>' +
+      '<p class="muted small">この時刻にあわせて、ホームの「いまのおすすめ」が変わります。</p>' +
+      '<div class="reminder-box"><b>カレンダーに登録する（おすすめ）</b>' +
+      '<p class="muted small">朝・夜・日曜の予定を毎日くり返す通知つきで書き出します。スマホやGoogleカレンダーで開くと登録でき、予定のリンクからすぐ書きはじめられます。</p>' +
+      '<button class="btn" id="exportIcs">カレンダー用ファイルを書き出す</button></div>' +
+      '<div class="reminder-box"><label class="row gap"><input type="checkbox" id="sNotify"' + (s.notify ? ' checked' : '') + '> <b>ブラウザの通知を使う</b></label>' +
+      '<p class="muted small">アプリを開いている間だけ、朝と夜の時刻にお知らせします。</p></div>' +
       '</section>' +
 
-      '<section class="card"><h2>🔒 プライバシーと暗号化</h2>' +
+      '<section class="card"><h2>プライバシー</h2>' +
       (JCrypto.available()
         ? (encrypted
           ? '<p>✅ 記録はパスフレーズで <b>AES-GCM 256bit</b> 暗号化されています。鍵はメモリ上にのみ保持されます。</p>' +
@@ -766,7 +694,7 @@
         : '<p class="muted">このブラウザ環境では Web Crypto が利用できないため暗号化は使えません（HTTPS または localhost で開いてください）。</p>') +
       '</section>' +
 
-      '<section class="card"><h2>💾 バックアップ</h2>' +
+      '<section class="card"><h2>バックアップ</h2>' +
       '<p class="muted small">データはこのブラウザ内（IndexedDB）にのみ保存されています。定期的なバックアップをおすすめします。' +
       (s.lastBackup ? '最後のバックアップ：' + fmtDateTime(s.lastBackup) : 'まだバックアップしていません。') + '</p>' +
       '<div class="row gap wrap">' +
@@ -776,13 +704,13 @@
       '<label class="btn">読み込み…<input type="file" id="importFile" accept=".json,application/json" hidden></label>' +
       '</div></section>' +
 
-      '<section class="card"><h2>⌨️ キーボードショートカット</h2><table class="shortcuts">' +
-      [['Ctrl/⌘ + J', 'クイックチェックイン'], ['Ctrl/⌘ + Shift + N', '記録の種類を選ぶ'], ['Ctrl/⌘ + N', '自由に書く'], ['Ctrl/⌘ + K', '検索'], ['Ctrl/⌘ + S', '今すぐ保存'], ['Ctrl/⌘ + E', 'プレビュー切替'], ['Ctrl/⌘ + B / I', '太字 / 斜体'],
+      '<section class="card"><h2>キーボードショートカット</h2><table class="shortcuts">' +
+      [['Ctrl/⌘ + J', 'ひとこと'], ['Ctrl/⌘ + Shift + N', '書くものを選ぶ'], ['Ctrl/⌘ + N', '白紙に自由に書く'], ['Ctrl/⌘ + K', '検索'], ['Ctrl/⌘ + S', '今すぐ保存'], ['Ctrl/⌘ + E', 'プレビュー切替'], ['Ctrl/⌘ + B / I', '太字 / 斜体'],
         ['Ctrl/⌘ + Shift + F', '集中モード'], ['Ctrl/⌘ + Shift + L', 'ロック（暗号化時）'], ['Esc', '集中モード終了 / 閉じる']]
         .map(([k, v]) => '<tr><td><kbd>' + k + '</kbd></td><td>' + v + '</td></tr>').join('') +
       '</table></section>' +
 
-      '<section class="card danger-zone"><h2>⚠️ 危険な操作</h2>' +
+      '<section class="card danger-zone"><h2>すべて削除</h2>' +
       '<p class="muted small">すべての記録を削除します。元に戻せません。</p>' +
       '<button class="btn danger" id="wipeAll">すべての記録を削除</button></section>' +
       '<p class="muted small center">綴 Tsuzuri · データは外部に送信されません</p>' +
@@ -793,11 +721,8 @@
     $('#sFont').onchange = (e) => set('font', e.target.value);
     $('#sSize').oninput = (e) => { $('#sizeOut').textContent = e.target.value + 'px'; set('fontSize', +e.target.value); };
     $('#sWeek').onchange = (e) => set('weekStart', +e.target.value);
-    $('#sGoal').onchange = (e) => set('dailyGoal', Math.max(0, +e.target.value || 0));
-    $('#sSpell').onchange = (e) => set('spellcheck', e.target.checked);
-    $('#sWorkStart').onchange = (e) => { if (e.target.value) set('workStart', e.target.value); };
-    $('#sWorkEnd').onchange = (e) => { if (e.target.value) set('workEnd', e.target.value); };
-    $$('[data-wd]').forEach((c) => (c.onchange = () => set('workdays', $$('[data-wd]').filter((x) => x.checked).map((x) => +x.dataset.wd))));
+    $('#sMorning').onchange = (e) => { if (e.target.value) set('morningTime', e.target.value); };
+    $('#sEvening').onchange = (e) => { if (e.target.value) set('eveningTime', e.target.value); };
     $('#exportIcs').onclick = () => { download('tsuzuri-reminders.ics', buildIcs(), 'text/calendar'); toast('カレンダーアプリで開いて登録してください'); };
     $('#sNotify').onchange = async (e) => {
       if (e.target.checked) {
@@ -1049,11 +974,11 @@
       '</div>' +
       '</div>' +
       '<input class="title-input" id="edTitle" placeholder="タイトル（任意）" value="' + esc(e.title) + '" maxlength="200">' +
-      (e.kind !== 'free' || e.energy || e.emotions.length ? '<div class="ed-kind">' + [e.kind !== 'free' ? '<span class="kind-badge kind-' + e.kind + '">' + FLOWS[e.kind].icon + ' ' + esc(FLOWS[e.kind].name) + '</span>' : '', e.energy ? '⚡ エネルギー ' + e.energy + '/5' : '', e.emotions.length ? esc(e.emotions.join('、')) : ''].filter(Boolean).join(' · ') + '</div>' : '') +
+      (e.kind !== 'free' || e.energy || e.emotions.length ? '<div class="ed-kind">' + [e.kind !== 'free' ? '<span class="kind-badge kind-' + e.kind + '">' + FLOWS[e.kind].icon + ' ' + esc(FLOWS[e.kind].name) + '</span>' : '', e.energy ? '元気さ ' + energyOf(e.energy).l : '', e.emotions.length ? esc(e.emotions.join('、')) : ''].filter(Boolean).join(' · ') + '</div>' : '') +
       '<div class="ed-meta">' +
       '<div class="mood-picker" role="radiogroup" aria-label="気分">' +
       MOODS.map((m) => '<button class="mood-btn mood-' + m.v + (e.mood === m.v ? ' on' : '') + '" data-mood="' + m.v + '" role="radio" aria-checked="' + (e.mood === m.v) + '" title="' + m.l + '">' + m.e + '</button>').join('') +
-      '<span class="mood-label" id="moodLabel">' + (e.mood ? moodOf(e.mood).l : '今の気分は？') + '</span>' +
+      '<span class="mood-label" id="moodLabel">' + (e.mood ? moodOf(e.mood).l : '気分') + '</span>' +
       '</div>' +
       '<div class="tag-editor" id="tagEditor"><span id="tagChips"></span><input id="tagInput" list="tagSuggest" placeholder="＋ タグ" aria-label="タグを追加"><datalist id="tagSuggest">' +
       existingTags.map((t) => '<option value="' + esc(t) + '">').join('') + '</datalist></div>' +
@@ -1061,28 +986,22 @@
       '<div class="toolbar" id="toolbar">' +
       '<button data-fmt="bold" title="太字 (Ctrl+B)"><b>B</b></button>' +
       '<button data-fmt="italic" title="斜体 (Ctrl+I)"><i>I</i></button>' +
-      '<button data-fmt="strike" title="取り消し線"><s>S</s></button>' +
-      '<button data-fmt="mark" title="マーカー">🖍</button>' +
       '<span class="sep"></span>' +
       '<button data-fmt="h2" title="見出し">H</button>' +
       '<button data-fmt="ul" title="箇条書き">•</button>' +
-      '<button data-fmt="ol" title="番号付きリスト">1.</button>' +
       '<button data-fmt="task" title="チェックリスト">☑</button>' +
       '<button data-fmt="quote" title="引用">❝</button>' +
-      '<button data-fmt="code" title="コード">&lt;/&gt;</button>' +
-      '<button data-fmt="link" title="リンク">🔗</button>' +
-      '<button data-fmt="time" title="現在時刻を挿入">🕒</button>' +
       '<span class="sep"></span>' +
-      '<div class="dropdown"><button id="tplBtn" title="テンプレート">📋 テンプレート</button><div class="menu" id="tplMenu" hidden>' +
+      '<div class="dropdown"><button id="tplBtn" title="テンプレート">テンプレート</button><div class="menu" id="tplMenu" hidden>' +
       TEMPLATES.map((t) => '<button data-tpl="' + t.id + '">' + t.icon + ' ' + esc(t.name) + '</button>').join('') + '</div></div>' +
-      '<button id="promptBtn" title="お題を挿入">💡 お題</button>' +
+      '<button id="promptBtn" title="問いを入れる">問いをもらう</button>' +
       '<span class="spacer"></span>' +
       '<div class="seg" id="modeSeg">' +
-      ['write:書く', 'split:分割', 'preview:プレビュー'].map((x) => { const [k, l] = x.split(':'); return '<button data-mode="' + k + '"' + (mode === k ? ' class="on"' : '') + '>' + l + '</button>'; }).join('') +
+      ['write:書く', 'split:並べる', 'preview:見る'].map((x) => { const [k, l] = x.split(':'); return '<button data-mode="' + k + '"' + (mode === k ? ' class="on"' : '') + '>' + l + '</button>'; }).join('') +
       '</div>' +
       '</div>' +
       '<div class="ed-body mode-' + mode + '" id="edBody">' +
-      '<textarea id="edText" class="ed-text" placeholder="ここに自由に書いてください…&#10;&#10;Markdown が使えます（# 見出し、- リスト、- [ ] チェック、**太字** など）" spellcheck="' + (s.spellcheck ? 'true' : 'false') + '"></textarea>' +
+      '<textarea id="edText" class="ed-text" placeholder="思いつくままに、自由に書いてください" spellcheck="' + (s.spellcheck ? 'true' : 'false') + '"></textarea>' +
       '<div id="edPreview" class="ed-preview prose"></div>' +
       '</div>' +
       '<div class="ed-foot">' +
@@ -1115,7 +1034,7 @@
       const v = +b.dataset.mood;
       e.mood = e.mood === v ? null : v;
       $$('.mood-btn').forEach((x) => { const on = +x.dataset.mood === e.mood; x.classList.toggle('on', on); x.setAttribute('aria-checked', on); });
-      $('#moodLabel').textContent = e.mood ? moodOf(e.mood).l : '今の気分は？';
+      $('#moodLabel').textContent = e.mood ? moodOf(e.mood).l : '気分';
       scheduleSave();
     }));
 
@@ -1214,7 +1133,7 @@
     const todayTotal = Array.from(state.entries.values()).filter((x) => x.date === today).reduce((s, x) => s + chars(x.body), 0);
     const goal = state.settings.dailyGoal;
     const mins = Math.max(1, Math.round(c / 500));
-    $('#edCount').textContent = c.toLocaleString() + ' 字 · 約' + mins + '分で読めます';
+    $('#edCount').textContent = c.toLocaleString() + '字';
     $('#goalFill').style.width = (goal ? Math.min(100, (todayTotal / goal) * 100) : 0) + '%';
     $('.goal-bar').title = '今日の目標 ' + todayTotal + ' / ' + goal + ' 字';
     $('.goal-bar').classList.toggle('done', goal > 0 && todayTotal >= goal);
@@ -1386,102 +1305,89 @@
     }
   }
 
-  /* ================= ワークジャーナル ================= */
+  /* ================= こころのジャーナル ================= */
   const QUICK_TYPES = [
-    { v: 'win', e: '🏆', l: '前進' },
-    { v: 'setback', e: '🧱', l: 'つまずき' },
+    { v: 'good', e: '😊', l: 'よかった' },
+    { v: 'hard', e: '🌧️', l: 'しんどい' },
+    { v: 'thanks', e: '🙏', l: '感謝' },
     { v: 'insight', e: '💡', l: '気づき' },
-    { v: 'note', e: '📝', l: 'メモ' },
   ];
-  const MIT_STATUS = { done: '✅ 達成', partial: '🔸 一部', notyet: '⏳ 未達' };
+  const QT_ALIAS = { win: 'good', setback: 'hard', note: 'insight' };
+  const qtOf = (v) => QUICK_TYPES.find((x) => x.v === (QT_ALIAS[v] || v)) || QUICK_TYPES[3];
   const KIND_LABEL = (k) => (FLOWS[k] ? FLOWS[k].icon + ' ' + FLOWS[k].short : '');
+  // 以前の版の感情語も色分けできるように
+  const LEGACY_EMO = { 意欲的: 'hp', 集中: 'hp', 嬉しい: 'hp', 満足: 'lp', 感謝: 'lp', プレッシャー: 'hn', 落ち込み: 'ln', 退屈: 'ln', 無気力: 'ln', 孤独: 'ln' };
 
   function hm(str) { const [h, m] = String(str || '0:0').split(':').map(Number); return h * 60 + (m || 0); }
   function fromMin(n) { n = (n + 1440) % 1440; return pad(Math.floor(n / 60)) + ':' + pad(n % 60); }
   function nowMin() { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
   function weekStartStr(date = todayStr()) { const d = parseDate(date); return addDays(date, -((d.getDay() + 6) % 7)); }
   function ofKind(kind, from, to = from) { return sorted().filter((e) => e.kind === kind && e.date >= from && e.date <= to); }
-  function emoGroup(word) { const g = EMOTIONS.find((x) => x.words.includes(word)); return g ? g.g : 'other'; }
+  function emoGroup(word) { const g = EMOTIONS.find((x) => x.words.includes(word)); return g ? g.g : (LEGACY_EMO[word] || 'other'); }
   function energyOf(v) { return ENERGY.find((x) => x.v === v); }
   const avg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
 
-  function mitText(e) { return e && e.data && typeof e.data.mit === 'string' ? e.data.mit : ''; }
-  function mitRe(m) { return new RegExp('^- \\[([ xX])\\] (' + regexEscape(m) + ')\\s*$', 'm'); }
-  function mitDone(e) {
-    const m = mitText(e);
-    if (!m) return null;
-    const r = e.body.match(mitRe(m));
-    return r ? r[1] !== ' ' : false;
-  }
-  async function setMitDone(e, done) {
-    const m = mitText(e);
-    if (!m) return;
-    e.body = e.body.replace(mitRe(m), (all, c, t) => '- [' + (done ? 'x' : ' ') + '] ' + t);
-    e.updatedAt = Date.now();
-    await persist(e);
-  }
-
-  function winsBetween(from, to) {
+  /** 期間内の「よかったこと」（夜のふりかえり＋ひとこと） */
+  function goodBetween(from, to) {
     const out = [];
     for (const e of sorted()) {
       if (e.date < from || e.date > to || !e.data) continue;
-      if (e.kind === 'shutdown' && Array.isArray(e.data.wins)) e.data.wins.forEach((w) => out.push({ text: w, date: e.date, id: e.id }));
-      if (e.kind === 'checkin' && e.data.quick && e.data.quick.type === 'win' && e.data.quick.note) out.push({ text: e.data.quick.note, date: e.date, id: e.id });
+      const list = e.kind === 'shutdown' ? (e.data.good || e.data.wins) : null;
+      if (Array.isArray(list)) list.forEach((w) => out.push({ text: w, date: e.date, id: e.id }));
+      const q = e.kind === 'checkin' && e.data.quick;
+      if (q && q.note && ['good', 'thanks'].includes(QT_ALIAS[q.type] || q.type)) out.push({ text: q.note, date: e.date, id: e.id });
     }
     return out;
   }
 
-  function workStats(days = 30) {
+  function wellStats(days = 30) {
     const today = todayStr();
     const from = addDays(today, -(days - 1));
-    const mornings = ofKind('morning', from, today).filter((e) => mitText(e));
-    const doneN = mornings.filter((e) => mitDone(e)).length;
-    const energies = sorted().filter((e) => e.date >= from && e.energy).map((e) => e.energy);
+    const recent = sorted().filter((e) => e.date >= from);
     return {
-      weekWins: winsBetween(weekStartStr(), today).length,
-      mitRate: mornings.length ? Math.round((doneN / mornings.length) * 100) : null,
-      mitN: mornings.length,
-      avgEnergy: avg(energies),
-      shutdownDays: new Set(ofKind('shutdown', from, today).map((e) => e.date)).size,
-      morningDays: new Set(ofKind('morning', from, today).map((e) => e.date)).size,
+      weekGood: goodBetween(weekStartStr(), today).length,
+      avgMood: avg(recent.filter((e) => e.mood).map((e) => e.mood)),
+      avgEnergy: avg(recent.filter((e) => e.energy).map((e) => e.energy)),
+      nights: new Set(ofKind('shutdown', from, today).map((e) => e.date)).size,
+      mornings: new Set(ofKind('morning', from, today).map((e) => e.date)).size,
     };
   }
 
   const NEG = (w) => ['hn', 'ln'].includes(emoGroup(w));
   const POS = (w) => ['hp', 'lp'].includes(emoGroup(w));
-  /** 今日の最新の状態がつらそうなら true（リセット／書き出しを提案） */
+  /** 今日の最新の気持ちがつらそうならその記録を返す（ケアを提案） */
   function careSignal() {
     const today = todayStr();
-    const latest = sorted().filter((e) => e.date === today && (e.mood || e.energy || e.emotions.length)).sort((a, b) => b.createdAt - a.createdAt)[0];
-    if (!latest) return null;
+    const latest = sorted().filter((e) => e.date === today && (e.mood || e.energy || e.emotions.length || (e.data && e.data.quick))).sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (!latest || latest.kind === 'reset' || latest.kind === 'expressive') return null;
     const after = sorted().some((e) => e.date === today && (e.kind === 'reset' || e.kind === 'expressive') && e.createdAt > latest.createdAt);
-    if (after || latest.kind === 'reset' || latest.kind === 'expressive') return null;
+    if (after) return null;
     const neg = latest.emotions.filter(NEG).length;
     const pos = latest.emotions.filter(POS).length;
-    if ((latest.mood && latest.mood <= 2) || (latest.energy && latest.energy <= 1) || (neg >= 2 && pos === 0)) return latest;
+    const hard = latest.data && latest.data.quick && qtOf(latest.data.quick.type).v === 'hard';
+    if (hard || (latest.mood && latest.mood <= 2) || (latest.energy && latest.energy <= 1) || (neg >= 2 && pos === 0)) return latest;
     return null;
   }
   function backupDue() {
     if (state.entries.size < 10) return false;
-    const last = state.settings.lastBackup || 0;
-    return Date.now() - last > 30 * 86400000;
+    return Date.now() - (state.settings.lastBackup || 0) > 30 * 86400000;
   }
   function markBackup() { state.settings.lastBackup = Date.now(); saveSettings(); }
 
-  function isWorkday(d = new Date()) { return state.settings.workdays.includes(d.getDay()); }
-
+  /** 時間帯に合わせた「いまのおすすめ」 */
   function recommendedFlow() {
     const s = state.settings;
     const n = nowMin();
     const today = todayStr();
+    const nightDone = ofKind('shutdown', today).length > 0;
     const weeklyDone = ofKind('weekly', weekStartStr(), today).length > 0;
-    const shutdownDone = ofKind('shutdown', today).length > 0;
-    if (!isWorkday()) return weeklyDone ? null : 'weekly';
-    if (n >= hm(s.workEnd) - 45) {
-      if (!shutdownDone) return 'shutdown';
-      return new Date().getDay() === 5 && !weeklyDone ? 'weekly' : null;
+    const isSunday = new Date().getDay() === 0;
+    if (n >= hm(s.eveningTime) - 120 || n < 240) {
+      if (!nightDone) return 'shutdown';
+      return isSunday && !weeklyDone ? 'weekly' : null;
     }
-    if (!ofKind('morning', today).length && n < hm(s.workStart) + 150) return 'morning';
+    if (!ofKind('morning', today).length && n < 12 * 60) return 'morning';
+    if (isSunday && !weeklyDone) return 'weekly';
     return 'checkin';
   }
 
@@ -1491,7 +1397,7 @@
     if (!f) return;
     if (f.once) {
       const ex = ofKind(id, todayStr())[0];
-      if (ex) { toast('今日の' + f.short + 'は記録済みです'); return openEntry(ex.id); }
+      if (ex) { toast('今日の' + f.name + 'はもう書いてあります'); return openEntry(ex.id); }
     }
     state.flow = { id, step: 0, answers: {}, startedAt: Date.now(), dirty: false };
     go('flow');
@@ -1508,17 +1414,17 @@
   }
 
   function stateWidget(v) {
-    return '<div class="fw-block"><div class="fw-label">エネルギー</div><div class="energy-row">' +
-      ENERGY.map((x) => '<button type="button" class="energy-btn' + (v.energy === x.v ? ' on' : '') + '" data-energy="' + x.v + '"><span class="eb-bar" style="--h:' + x.v * 20 + '%"></span><span class="eb-l">' + x.l + '</span></button>').join('') +
+    return '<div class="fw-block"><div class="mood-row big">' +
+      MOODS.map((m) => '<button type="button" class="mood-btn mood-' + m.v + (v.mood === m.v ? ' on' : '') + '" data-fmood="' + m.v + '" aria-label="' + m.l + '"><span>' + m.e + '</span><small>' + m.l + '</small></button>').join('') +
       '</div></div>' +
-      '<div class="fw-block"><div class="fw-label">気分</div><div class="mood-row">' +
-      MOODS.map((m) => '<button type="button" class="mood-btn mood-' + m.v + (v.mood === m.v ? ' on' : '') + '" data-fmood="' + m.v + '" title="' + m.l + '">' + m.e + '</button>').join('') +
-      '</div></div>' +
-      '<div class="fw-block"><div class="fw-label">感情に名前をつける <span class="muted">（いくつでも）</span></div>' +
+      '<div class="fw-block"><div class="fw-label">気持ちに名前をつけるなら <span class="muted">（いくつでも）</span></div>' +
       EMOTIONS.map((g) => '<div class="emo-group emo-' + g.g + '">' + g.words.map((w) => '<button type="button" class="emo-chip' + ((v.emotions || []).includes(w) ? ' on' : '') + '" data-emo="' + esc(w) + '">' + esc(w) + '</button>').join('') + '</div>').join('') +
       '<div class="emo-group emo-other" id="emoCustom">' + (v.emotions || []).filter((w) => emoGroup(w) === 'other').map((w) => '<button type="button" class="emo-chip on" data-emo="' + esc(w) + '">' + esc(w) + '</button>').join('') +
       '<input class="emo-input" id="emoInput" placeholder="＋ ほかの言葉で" maxlength="20" enterkeyhint="done"></div>' +
-      '</div>';
+      '</div>' +
+      '<div class="fw-block"><div class="fw-label">からだの元気さ</div><div class="energy-row">' +
+      ENERGY.map((x) => '<button type="button" class="energy-btn' + (v.energy === x.v ? ' on' : '') + '" data-energy="' + x.v + '"><span class="eb-dots">' + '●'.repeat(x.v) + '<i>' + '●'.repeat(5 - x.v) + '</i></span><span class="eb-l">' + x.l + '</span></button>').join('') +
+      '</div></div>';
   }
 
   function bindStateWidget(root, v, onChange) {
@@ -1556,19 +1462,14 @@
     }
   }
 
-  function lastTomorrow() {
-    const sd = sorted().find((e) => e.kind === 'shutdown' && e.date < todayStr() && e.data && Array.isArray(e.data.tomorrow) && e.data.tomorrow.length);
-    return sd ? sd.data.tomorrow[0] : '';
-  }
-
-  function weekEnergyChart() {
+  function weekMoodChart() {
     const ws = weekStartStr();
     const map = byDate();
-    let html = '<div class="vbars week-energy">';
+    let html = '<div class="week-mood">';
     for (let i = 0; i < 7; i++) {
       const ds = addDays(ws, i);
-      const a = avg((map.get(ds) || []).map((e) => e.energy).filter(Boolean));
-      html += '<div class="vbar" title="' + ds + (a ? ' 平均 ' + a.toFixed(1) : ' 記録なし') + '"><span class="vbar-fill energy-fill" style="height:' + (a ? a * 20 : 0) + '%"></span><span class="vbar-label">' + WEEK[parseDate(ds).getDay()] + '</span><span class="vbar-mood">' + (a ? a.toFixed(1) : '–') + '</span></div>';
+      const a = avg((map.get(ds) || []).map((e) => e.mood).filter(Boolean));
+      html += '<div class="wm-day" title="' + ds + (a ? ' 気分 ' + a.toFixed(1) : ' 記録なし') + '"><span class="wm-face' + (a ? '' : ' none') + '">' + (a ? moodOf(Math.round(a)).e : '·') + '</span><span class="wm-label">' + WEEK[parseDate(ds).getDay()] + '</span></div>';
     }
     return html + '</div>';
   }
@@ -1589,35 +1490,24 @@
       a[st.key] = a[st.key] || { energy: null, mood: null, emotions: [] };
       w = stateWidget(a[st.key]);
     } else if (st.type === 'quick') {
-      a[st.key] = a[st.key] || { energy: null, mood: null, emotions: [], type: 'win', note: '' };
+      a[st.key] = a[st.key] || { energy: null, mood: null, emotions: [], type: 'good', note: '' };
       const v = a[st.key];
-      w = '<div class="fw-block"><div class="fw-label">何を記録する？</div><div class="seg big" id="qType">' +
-        QUICK_TYPES.map((t) => '<button type="button" data-qtype="' + t.v + '"' + (v.type === t.v ? ' class="on"' : '') + '>' + t.e + ' ' + t.l + '</button>').join('') + '</div>' +
-        '<input class="input fw-input" id="fwInput" placeholder="ひとことで（例：APIの不具合の原因を特定した）" value="' + esc(v.note) + '" enterkeyhint="done"></div>' +
-        stateWidget(v);
+      w = '<div class="fw-block"><div class="qtype-row" id="qType">' +
+        QUICK_TYPES.map((t) => '<button type="button" class="qtype' + (v.type === t.v ? ' on' : '') + '" data-qtype="' + t.v + '"><span>' + t.e + '</span>' + t.l + '</button>').join('') + '</div>' +
+        '<textarea class="input fw-input fw-note" id="fwInput" rows="2" placeholder="何があった？（例：ランチの店員さんが親切だった）" enterkeyhint="done">' + esc(v.note) + '</textarea></div>' +
+        '<details class="more-state"' + (v.mood || v.energy || (v.emotions || []).length ? ' open' : '') + '><summary>気分も残す</summary>' + stateWidget(v) + '</details>';
     } else if (st.type === 'line') {
       w = '<input class="input fw-input" id="fwInput" placeholder="' + esc(st.placeholder || '') + '" value="' + esc(a[st.key] || '') + '" enterkeyhint="next">';
     } else if (st.type === 'text' || st.type === 'list') {
-      w = '<textarea class="input fw-text" id="fwInput" rows="' + (st.type === 'list' ? 5 : 6) + '" placeholder="' + esc(st.placeholder || '') + '">' + esc(a[st.key] || '') + '</textarea>' +
-        (st.type === 'list' ? '<p class="muted small">1行に1つずつ書いてください</p>' : '');
-      if (st.showWeekEnergy) w = weekEnergyChart() + w;
-    } else if (st.type === 'ifthen') {
-      const v = a[st.key] = a[st.key] || { if: '', then: '' };
-      w = '<div class="ifthen"><label>もし<input class="input" id="fwIf" value="' + esc(v.if) + '" placeholder="例：14時以降に集中が切れたら"></label>' +
-        '<label>なら<input class="input" id="fwThen" value="' + esc(v.then) + '" placeholder="例：5分歩いてから一番小さいタスクに着手する"></label></div>';
-    } else if (st.type === 'mitReview') {
-      const morning = ofKind('morning', todayStr())[0];
-      const mit = mitText(morning);
-      const v = a[st.key] = a[st.key] || { text: mit, status: null, morningId: morning ? morning.id : null };
-      w = (mit ? '<div class="mit-banner">🎯 ' + esc(mit) + '</div>'
-        : '<p class="muted">今朝の始業前チェックインはありません。今日の主な仕事を書いてください。</p><input class="input fw-input" id="fwInput" value="' + esc(v.text) + '" placeholder="例：週次レポートの作成">') +
-        '<div class="seg big" id="mitSeg">' + Object.entries(MIT_STATUS).map(([k, l]) => '<button type="button" data-mit="' + k + '"' + (v.status === k ? ' class="on"' : '') + '>' + l + '</button>').join('') + '</div>';
-    } else if (st.type === 'weekWins') {
-      const wins = winsBetween(weekStartStr(), todayStr());
-      w = (wins.length
-        ? '<ul class="win-list">' + wins.map((x) => '<li><span class="muted small">' + Number(x.date.slice(5, 7)) + '/' + Number(x.date.slice(8)) + '</span> ' + esc(x.text) + '</li>').join('') + '</ul><p class="win-count">🏆 今週の前進：<b>' + wins.length + '</b> 件</p>'
-        : '<p class="muted">今週はまだ前進の記録がありません。思い出して書いてみましょう。</p>') +
-        '<textarea class="input fw-text" id="fwInput" rows="4" placeholder="付け加えたい前進（1行に1つ）">' + esc(a[st.key] || '') + '</textarea>';
+      w = '<textarea class="input fw-text' + (st.tall ? ' tall' : '') + '" id="fwInput" rows="' + (st.type === 'list' ? 4 : 6) + '" placeholder="' + esc(st.placeholder || '') + '">' + esc(a[st.key] || '') + '</textarea>' +
+        (st.type === 'list' ? '<p class="muted small">1行に1つずつ</p>' : '');
+      if (st.showWeekMood) w = weekMoodChart() + w;
+    } else if (st.type === 'weekGood') {
+      const goods = goodBetween(weekStartStr(), todayStr());
+      w = (goods.length
+        ? '<ul class="win-list">' + goods.map((x) => '<li><span class="muted small">' + WEEK[parseDate(x.date).getDay()] + '</span> ' + esc(x.text) + '</li>').join('') + '</ul>'
+        : '<p class="muted">今週はまだ記録がありません。思い出せることを書いてみましょう。</p>') +
+        '<textarea class="input fw-text" id="fwInput" rows="3" placeholder="ほかにも思い出したら（1行に1つ）">' + esc(a[st.key] || '') + '</textarea>';
     } else if (st.type === 'timer') {
       const t = fl.timer = fl.timer || { total: 15 * 60, left: 15 * 60, int: null };
       w = '<div class="timer-row"><div class="seg" id="tmLen">' + [5, 10, 15, 20].map((m) => '<button type="button" data-min="' + m + '"' + (t.total === m * 60 ? ' class="on"' : '') + '>' + m + '分</button>').join('') + '</div>' +
@@ -1625,20 +1515,15 @@
         '<textarea class="input fw-text tall" id="fwInput" placeholder="ここに書き続けてください…">' + esc(a[st.key] || '') + '</textarea>';
     }
 
-    if (st.suggest === 'tomorrow' && !a[st.key]) {
-      const t = lastTomorrow();
-      if (t) suggestion = '<button type="button" class="suggest" data-fill="' + esc(t) + '">↩︎ 前回の「明日の最初の一手」：<b>' + esc(t) + '</b> を使う</button>';
-    }
-    if (st.suggest === 'todayWins') {
-      const ws = winsBetween(todayStr(), todayStr()).filter((x) => !String(a[st.key] || '').includes(x.text)).map((x) => x.text);
-      if (ws.length) suggestion = '<button type="button" class="suggest" data-append="' + esc(ws.join('\n')) + '">＋ 今日のチェックインで記録した前進（' + ws.length + '件）を追加</button>';
+    if (st.suggest === 'todayGood') {
+      const ws = goodBetween(todayStr(), todayStr()).filter((x) => x.id !== fl.savedId && !String(a[st.key] || '').includes(x.text)).map((x) => x.text);
+      if (ws.length) suggestion = '<button type="button" class="suggest" data-append="' + esc(ws.join('\n')) + '">＋ 今日の「ひとこと」から ' + ws.length + ' 件を入れる</button>';
     }
 
     $('#main').innerHTML =
       '<div class="view flow flow-' + f.id + '">' +
       '<div class="flow-top"><button class="icon-btn" id="flowClose" aria-label="閉じる">✕</button>' +
-      '<div class="flow-title">' + f.icon + ' ' + esc(f.name) + '</div><span class="muted small">' + (fl.step + 1) + ' / ' + total + '</span></div>' +
-      '<div class="flow-progress"><span style="width:' + ((fl.step + 1) / total) * 100 + '%"></span></div>' +
+      '<div class="flow-title">' + f.icon + ' ' + esc(f.name) + '</div>' + (total > 1 ? '<span class="flow-dots">' + f.steps.map((_, i) => '<i' + (i <= fl.step ? ' class="on"' : '') + '></i>').join('') + '</span>' : '') + '</div>' +
       '<div class="flow-step">' +
       '<h1 class="flow-q">' + esc(st.q) + (st.optional ? ' <span class="opt">任意</span>' : '') + '</h1>' +
       (st.hint ? '<p class="flow-hint">' + esc(st.hint) + '</p>' : '') +
@@ -1646,15 +1531,15 @@
       whyHtml(st.research) +
       '</div>' +
       '<div class="flow-nav">' +
-      (fl.step > 0 ? '<button class="btn" id="flowBack">← 戻る</button>' : '<span></span>') +
-      '<button class="btn primary" id="flowNext">' + (last ? '✓ 完了して保存' : (st.optional && isBlank(a[st.key]) ? 'スキップ →' : '次へ →')) + '</button>' +
+      (fl.step > 0 ? '<button class="btn ghost" id="flowBack">戻る</button>' : '<span></span>') +
+      '<button class="btn primary" id="flowNext">' + (last ? '保存する' : (st.optional && isBlank(a[st.key]) ? 'スキップ' : '次へ')) + '</button>' +
       '</div></div>';
 
     const main = $('#main');
     const markDirty = () => {
       fl.dirty = true;
       const nb = $('#flowNext');
-      if (nb && !last) nb.textContent = st.optional && isBlank(a[st.key]) ? 'スキップ →' : '次へ →';
+      if (nb && !last) nb.textContent = st.optional && isBlank(a[st.key]) ? 'スキップ' : '次へ';
     };
     const next = () => { fl.step++; renderFlowStep(); };
     $('#flowClose').onclick = () => go('home');
@@ -1668,17 +1553,7 @@
       bindStateWidget(main, v, markDirty);
       $$('[data-qtype]', main).forEach((b) => (b.onclick = () => { v.type = b.dataset.qtype; $$('[data-qtype]', main).forEach((y) => y.classList.toggle('on', y === b)); markDirty(); }));
       inp.oninput = () => { v.note = inp.value; markDirty(); };
-      inp.onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) { ev.preventDefault(); finishFlow(); } };
-    } else if (st.type === 'ifthen') {
-      const v = a[st.key];
-      $('#fwIf').oninput = (ev) => { v.if = ev.target.value; markDirty(); };
-      $('#fwThen').oninput = (ev) => { v.then = ev.target.value; markDirty(); };
-      $('#fwIf').onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) { ev.preventDefault(); $('#fwThen').focus(); } };
-      $('#fwThen').onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) { ev.preventDefault(); $('#flowNext').click(); } };
-    } else if (st.type === 'mitReview') {
-      const v = a[st.key];
-      if (inp) inp.oninput = () => { v.text = inp.value; markDirty(); };
-      $$('[data-mit]', main).forEach((b) => (b.onclick = () => { v.status = b.dataset.mit; $$('[data-mit]', main).forEach((y) => y.classList.toggle('on', y === b)); markDirty(); }));
+      inp.onkeydown = (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey) && !ev.isComposing) { ev.preventDefault(); finishFlow(); } };
     } else if (inp) {
       inp.oninput = () => { a[st.key] = inp.value; markDirty(); };
       inp.onkeydown = (ev) => {
@@ -1696,7 +1571,7 @@
       renderFlowStep();
     };
 
-    if (inp && st.type !== 'quick' && st.type !== 'mitReview' && window.matchMedia('(min-width: 761px)').matches) {
+    if (inp && st.type !== 'quick' && window.matchMedia('(min-width: 761px)').matches) {
       inp.focus();
       if (inp.setSelectionRange) inp.setSelectionRange(inp.value.length, inp.value.length);
     }
@@ -1744,10 +1619,10 @@
   function stateLine(v) {
     if (!v) return '';
     const parts = [];
-    if (v.energy) parts.push('⚡ エネルギー ' + v.energy + '/5（' + energyOf(v.energy).l + '）');
     if (v.mood) parts.push(moodOf(v.mood).e + ' ' + moodOf(v.mood).l);
-    if (v.emotions && v.emotions.length) parts.push('感情：' + v.emotions.join('、'));
-    return parts.join(' · ');
+    if (v.emotions && v.emotions.length) parts.push(v.emotions.join('・'));
+    if (v.energy) parts.push('元気さ ' + energyOf(v.energy).l);
+    return parts.join('　');
   }
 
   function buildFlowBody(f, d) {
@@ -1759,16 +1634,13 @@
       switch (st.type) {
         case 'state': c = stateLine(v); break;
         case 'quick': {
-          const qt = QUICK_TYPES.find((x) => x.v === v.type) || QUICK_TYPES[3];
-          c = [v.note ? qt.e + ' **' + qt.l + '**：' + v.note : '', stateLine(v)].filter(Boolean).join('\n\n');
+          const qt = qtOf(v.type);
+          c = [v.note ? qt.e + ' ' + v.note : '', stateLine(v)].filter(Boolean).join('\n\n');
           out.push(c);
           continue;
         }
-        case 'line': c = f.id === 'morning' && st.key === 'mit' ? '- [ ] ' + v.trim() : v.trim(); break;
-        case 'text': case 'timer': c = v.trim(); break;
-        case 'list': case 'weekWins': c = v.map((x) => '- ' + x).join('\n'); break;
-        case 'ifthen': if (!v.if && !v.then) continue; c = 'もし **' + (v.if || '…') + '** になったら、**' + (v.then || '…') + '** する'; break;
-        case 'mitReview': c = '- [' + (v.status === 'done' ? 'x' : ' ') + '] ' + (v.text || '（未設定）') + (v.status ? ' — ' + MIT_STATUS[v.status] : ''); break;
+        case 'line': case 'text': case 'timer': c = v.trim(); break;
+        case 'list': case 'weekGood': c = v.map((x) => '- ' + x).join('\n'); break;
       }
       if (c) out.push('### ' + st.label + '\n' + c);
     }
@@ -1777,11 +1649,11 @@
 
   function flowTitle(f, d) {
     switch (f.id) {
-      case 'morning': return d.mit ? '始業前：' + d.mit : '始業前チェックイン';
-      case 'checkin': { const qt = QUICK_TYPES.find((x) => x.v === (d.quick || {}).type); return (qt ? qt.l : 'チェックイン') + ((d.quick || {}).note ? '：' + d.quick.note.slice(0, 40) : ''); }
-      case 'reset': return 'リセット' + (d.situation ? '：' + d.situation.split('\n')[0].slice(0, 30) : '');
-      case 'shutdown': return '終業シャットダウン';
-      case 'weekly': return '週次レビュー（' + Number(weekStartStr().slice(5, 7)) + '/' + Number(weekStartStr().slice(8)) + '〜）';
+      case 'morning': return d.intention || '朝のひととき';
+      case 'checkin': { const q = d.quick || {}; return q.note ? q.note.split('\n')[0].slice(0, 40) : qtOf(q.type).l; }
+      case 'reset': return 'こころのケア';
+      case 'shutdown': return '夜のふりかえり';
+      case 'weekly': return '週のふりかえり（' + Number(weekStartStr().slice(5, 7)) + '/' + Number(weekStartStr().slice(8)) + '〜）';
       default: return f.name;
     }
   }
@@ -1798,11 +1670,12 @@
     for (const st of f.steps) {
       let v = a[st.key];
       if (isBlank(v)) continue;
-      if (st.type === 'list' || st.type === 'weekWins') v = String(v).split('\n').map((x) => x.replace(/^\s*([-・*]|\d+[.)])\s*/, '').trim()).filter(Boolean);
-      if (st.type === 'weekWins') v = winsBetween(weekStartStr(), todayStr()).map((x) => x.text).concat(v);
+      if (st.type === 'list' || st.type === 'weekGood') v = String(v).split('\n').map((x) => x.replace(/^\s*([-・*]|\d+[.)])\s*/, '').trim()).filter(Boolean);
       if (typeof v === 'string') v = v.trim();
       data[st.key] = typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v;
     }
+    const weekStep = f.steps.find((x) => x.type === 'weekGood');
+    if (weekStep) data[weekStep.key] = goodBetween(weekStartStr(), todayStr()).map((x) => x.text).concat(data[weekStep.key] || []);
     const s = data.quick || data.state || {};
     const e = newEntry(todayStr(), {
       kind: f.id, title: flowTitle(f, data), body: buildFlowBody(f, data),
@@ -1811,21 +1684,17 @@
     });
     try {
       await persist(e);
-      if (f.id === 'shutdown' && data.mit && data.mit.morningId) {
-        const m = state.entries.get(data.mit.morningId);
-        if (m) await setMitDone(m, data.mit.status === 'done');
-      }
     } catch (err) {
       fl.saving = false;
       console.error(err);
-      return toast('⚠️ 保存に失敗しました');
+      return toast('保存できませんでした。もう一度お試しください');
     }
     fl.dirty = false;
     fl.saving = false;
     fl.savedId = e.id;
     if (f.id === 'checkin') {
       state.flow = null;
-      toast('⚡ チェックインを記録しました');
+      toast(qtOf((data.quick || {}).type).v === 'good' ? '残しました。いい瞬間でしたね' : '残しました');
       return go('home');
     }
     fl.step = f.steps.length;
@@ -1837,19 +1706,16 @@
     const fl = state.flow;
     const f = FLOWS[fl.id];
     const e = state.entries.get(fl.savedId);
-    const msg = f.done || f.icon + ' ' + f.name + 'を記録しました。';
+    const msg = f.done || f.icon + ' ' + f.name + 'を残しました。';
     const st = computeStreaks();
     $('#main').innerHTML =
       '<div class="view flow flow-done flow-' + f.id + '">' +
-      '<div class="done-hero"><div class="done-icon">' + f.icon + '</div>' +
-      '<p class="done-msg">' + esc(msg).replace(/\n/g, '<br>') + '</p>' +
-      '<p class="muted small">🔥 ' + st.current + '日連続で記録中</p></div>' +
+      '<div class="done-hero"><p class="done-msg">' + esc(msg).replace(/\n/g, '<br>') + '</p>' +
+      (st.current > 1 ? '<p class="muted small">' + st.current + '日つづいています</p>' : '') + '</div>' +
       (e ? '<div class="card prose done-summary">' + MD.render(e.body) + '</div>' : '') +
-      '<div class="done-more"><p>まだ書きたいことがあれば、このまま自由に続けられます。</p><button class="btn" id="doneWrite">✍️ 続けて自由に書く</button></div>' +
-      '<div class="flow-nav"><button class="btn ghost" id="doneOpen">記録を見る</button><button class="btn primary" id="doneHome">ホームへ</button></div>' +
+      '<div class="flow-nav"><button class="btn ghost" id="doneWrite">続けて自由に書く</button><button class="btn primary" id="doneHome">ホームへ</button></div>' +
       '</div>';
     $('#doneHome').onclick = () => { state.flow = null; go('home'); };
-    $('#doneOpen').onclick = () => { const id = fl.savedId; state.flow = null; openEntry(id); };
     $('#doneWrite').onclick = async () => {
       const id = fl.savedId;
       const en = state.entries.get(id);
@@ -1864,60 +1730,61 @@
   function openSheet() {
     const m = $('#modal');
     const rec = recommendedFlow();
-    const order = ['checkin', 'morning', 'shutdown', 'reset', 'weekly', 'expressive'];
-    m.innerHTML = '<div class="sheet" role="dialog" aria-label="記録する"><div class="sheet-handle"></div><h3>何を記録しますか？</h3>' +
-      order.map((id) => {
-        const f = FLOWS[id];
-        const done = f.once && ofKind(id, todayStr()).length;
-        return '<button class="sheet-item' + (rec === id ? ' rec' : '') + '" data-flow="' + id + '"><span class="si-icon">' + f.icon + '</span><span class="si-text"><b>' + esc(f.name) + '</b><small>' + esc(f.sub || f.desc) + '</small></span><span class="si-meta">' + (done ? '✓ 済' : rec === id ? 'おすすめ' : f.minutes + '分') + '</span></button>';
-      }).join('') +
-      '<button class="sheet-item" data-free="1"><span class="si-icon">✍️</span><span class="si-text"><b>自由に書く</b><small>Markdown エディタで自由に記録します</small></span><span class="si-meta"></span></button>' +
-      '<button class="btn block" data-close="1">キャンセル</button></div>';
+    const item = (id) => {
+      const f = FLOWS[id];
+      const done = f.once && ofKind(id, todayStr()).length;
+      return '<button class="sheet-item' + (rec === id ? ' rec' : '') + '" data-flow="' + id + '"><span class="si-icon">' + f.icon + '</span><span class="si-text"><b>' + esc(f.name) + '</b><small>' + esc(f.sub) + '</small></span><span class="si-meta">' + (done ? '済み' : f.minutes + '分') + '</span></button>';
+    };
+    m.innerHTML = '<div class="sheet" role="dialog" aria-label="書く"><div class="sheet-handle"></div>' +
+      '<div class="sheet-group">' + ['checkin', 'morning', 'shutdown'].map(item).join('') + '</div>' +
+      '<p class="sheet-label">こころを整える</p>' +
+      '<div class="sheet-group">' + ['reset', 'expressive', 'future', 'weekly'].map(item).join('') + '</div>' +
+      '<button class="sheet-item plain" data-free="1"><span class="si-icon">✍️</span><span class="si-text"><b>白紙に自由に書く</b></span><span class="si-meta"></span></button>' +
+      '</div>';
     m.hidden = false;
     m.classList.add('sheet-mode');
     const close = () => { m.hidden = true; m.classList.remove('sheet-mode'); m.innerHTML = ''; document.removeEventListener('keydown', onKey, true); };
     const onKey = (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); close(); } };
     document.addEventListener('keydown', onKey, true);
     m.onclick = (ev) => {
-      if (ev.target === m || ev.target.closest('[data-close]')) return close();
+      if (ev.target === m) return close();
       const b = ev.target.closest('[data-flow],[data-free]');
       if (!b) return;
       close();
       if (b.dataset.free) writeNew(); else startFlow(b.dataset.flow);
     };
     const first = $('.sheet-item.rec', m) || $('.sheet-item', m);
-    first.focus();
+    first.focus({ preventScroll: true });
   }
 
   /* ---------- ガイド ---------- */
   function renderGuide() {
     const s = state.settings;
-    const flowCard = (id) => {
+    const flowRow = (id) => {
       const f = FLOWS[id];
-      return '<div class="card guide-flow"><div class="gf-head"><span class="gf-icon">' + f.icon + '</span><div><h2>' + esc(f.name) + '</h2><p class="muted small">約' + f.minutes + '分</p></div>' +
-        '<button class="btn small primary" data-flow="' + id + '">はじめる</button></div><p>' + esc(f.desc) + '</p>' +
-        '<div class="gf-research">' + f.research.map((r) => '<span>🔬 ' + esc(RESEARCH[r].title) + '</span>').join('') + '</div></div>';
+      return '<button class="guide-flow" data-flow="' + id + '"><span class="gf-icon">' + f.icon + '</span><span class="gf-text"><b>' + esc(f.name) + '<small>約' + f.minutes + '分</small></b><span>' + esc(f.desc) + '</span></span></button>';
     };
     $('#main').innerHTML =
       '<div class="view guide">' +
-      '<header class="view-head"><div><p class="eyebrow">ガイド</p><h1>研究にもとづく「働く人のジャーナリング」</h1></div></header>' +
-      '<section class="card routine"><h2>🗓️ おすすめの1日の流れ</h2><ol class="timeline">' +
-      '<li><b>' + esc(s.workStart) + ' 始業前（3分）</b> — 状態を確認し、今日の「1つ」と「もし〜なら」を決める</li>' +
-      '<li><b>仕事中（1分×何回でも）</b> — 前進・つまずき・気づきをチェックイン。イライラしたら「リセット」</li>' +
-      '<li><b>' + esc(fromMin(hm(s.workEnd) - 15)) + ' 終業時（5分）</b> — 前進と学びを確認し、明日やることを書き出して仕事を閉じる</li>' +
-      '<li><b>金曜（10分）</b> — 週次レビューで1週間の前進とエネルギーの傾向を振り返る</li></ol>' +
-      '<p class="muted small">ポイントは「短く・毎日・同じタイミングで」。完璧より継続です。設定からカレンダーにリマインダーを登録できます。</p></section>' +
-      '<section class="card balance"><h2>✍️ 自由に書く？ 📊 状態をチェックする？</h2>' +
-      '<p>どちらか一方ではなく、<b>毎日は短いチェックインで続け、深く考えたい日にだけ書く</b>のがおすすめです。</p>' +
-      '<ul><li><b>チェックイン</b>：続けやすく、エネルギーや感情の傾向が見えます。ただし数字を付けるだけでは効果が薄いので、感情は<b>言葉で</b>選び、ひとこと添えましょう。</li>' +
-      '<li><b>自由に書く</b>：出来事の意味や因果を言葉にすることで、気持ちの整理や学びにつながります。各セッションの最後の「続けて自由に書く」や「今日の出来事」の質問から書けます。</li>' +
-      '<li><b>書きすぎ・測りすぎに注意</b>：チェックインは1日数回で十分です。同じ不満を何度も書くより、「次にどうするか」まで進めましょう。</li>' +
-      '<li><b>しんどい記録が続いたとき</b>は、ホームにリセットや書き出しの提案が表示されます。</li></ul></section>' +
-      '<h2 class="month-head">セッション</h2>' +
-      ['morning', 'checkin', 'shutdown', 'reset', 'weekly', 'expressive'].map(flowCard).join('') +
-      '<h2 class="month-head">科学的な背景</h2>' +
-      Object.values(RESEARCH).map((r) => '<section class="card research"><h3>' + esc(r.title) + '</h3><p>' + esc(r.text) + '</p><cite>' + esc(r.ref) + '</cite></section>').join('') +
-      '<p class="muted small">※ 効果には個人差があり、研究結果はすべての人に同じ効果を保証するものではありません。強い不調が続く場合は、医療機関や専門家に相談してください。</p>' +
+      '<header class="view-head"><div><p class="eyebrow">ガイド</p><h1>毎日を、少しずつ<br>心地よくするために</h1></div></header>' +
+      '<section class="guide-intro"><p>綴は、短い問いに答えていくだけで、気持ちを整え、毎日の中にあるよいことに気づけるジャーナルです。どの問いも、幸福感やこころの健康についての研究をもとにしています。</p></section>' +
+      '<section class="card"><h2>1日のリズム</h2><ol class="timeline">' +
+      '<li><b>朝 ' + esc(s.morningTime) + 'ごろ・2分</b><span>いまの気持ちと、今日大切にしたいことを思い浮かべる</span></li>' +
+      '<li><b>日中・いつでも</b><span>うれしかったこと、しんどかったことを「ひとこと」で</span></li>' +
+      '<li><b>夜 ' + esc(s.eveningTime) + 'ごろ・3分</b><span>よかったことを3つ。気がかりは書いて置いておく</span></li>' +
+      '<li><b>日曜・5分</b><span>1週間のよかったことを読み返す</span></li></ol>' +
+      '<p class="muted small">全部やる必要はありません。夜のふりかえりだけでも十分です。</p></section>' +
+      '<section class="card"><h2>書くこと と 気持ちを記録すること</h2>' +
+      '<p>毎日は短い問いで続け、話したいことがある日は自由に書く。その組み合わせがおすすめです。</p>' +
+      '<ul class="plain-list"><li>気持ちは数字より<b>言葉で</b>。名前をつけるだけで落ち着きやすくなります。</li>' +
+      '<li>心に残った出来事は、何があって、どう感じたかを<b>物語のように</b>書くと整理されます。</li>' +
+      '<li>同じ不安を何度も書くより、「何に気づいたか」まで進めると気持ちが沈みにくくなります。</li>' +
+      '<li>しんどい記録が続くと、ホームに「こころのケア」をそっと提案します。</li></ul></section>' +
+      '<h2 class="month-head">問いの種類</h2>' +
+      '<div class="guide-flows">' + ['morning', 'checkin', 'shutdown', 'reset', 'expressive', 'future', 'weekly'].map(flowRow).join('') + '</div>' +
+      '<h2 class="month-head">研究について</h2>' +
+      '<div class="research-list">' + Object.values(RESEARCH).map((r) => '<details class="research"><summary>' + esc(r.title) + '</summary><p>' + esc(r.text) + '</p><cite>' + esc(r.ref) + '</cite></details>').join('') + '</div>' +
+      '<p class="muted small">効果には個人差があります。つらい状態が続くときは、ひとりで抱えず、医療機関や専門の相談窓口を頼ってください。</p>' +
       '</div>';
     $$('[data-flow]', $('#main')).forEach((b) => (b.onclick = () => startFlow(b.dataset.flow)));
   }
@@ -1925,7 +1792,7 @@
   /* ---------- リマインダー ---------- */
   function reminderTimes() {
     const s = state.settings;
-    return { morning: s.workStart, shutdown: fromMin(hm(s.workEnd) - 15) };
+    return { morning: s.morningTime, shutdown: s.eveningTime };
   }
 
   function appUrl(params = '') {
@@ -1933,29 +1800,26 @@
   }
 
   function buildIcs() {
-    const s = state.settings;
-    const days = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
-    const byday = s.workdays.slice().sort().map((d) => days[d]).join(',') || 'MO,TU,WE,TH,FR';
     const t = reminderTimes();
     const start = addDays(todayStr(), 1).replace(/-/g, '');
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-    const ev = (uidKey, time, mins, summary, flow) => [
+    const ev = (uidKey, time, mins, summary, flow, rule) => [
       'BEGIN:VEVENT',
       'UID:tsuzuri-' + uidKey + '@tsuzuri.app',
       'DTSTAMP:' + stamp,
       'DTSTART:' + start + 'T' + time.replace(':', '') + '00',
       'DURATION:PT' + mins + 'M',
-      'RRULE:FREQ=WEEKLY;BYDAY=' + (flow === 'weekly' ? 'FR' : byday),
+      'RRULE:' + rule,
       'SUMMARY:' + summary,
       'DESCRIPTION:' + appUrl('?flow=' + flow),
       'URL:' + appUrl('?flow=' + flow),
       'BEGIN:VALARM', 'ACTION:DISPLAY', 'TRIGGER:PT0M', 'DESCRIPTION:' + summary, 'END:VALARM',
       'END:VEVENT',
     ];
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Tsuzuri//Work Journal//JA', 'CALSCALE:GREGORIAN']
-      .concat(ev('morning', t.morning, 3, '☀️ 始業前チェックイン（3分）', 'morning'))
-      .concat(ev('shutdown', t.shutdown, 5, '🌙 終業シャットダウン（5分）', 'shutdown'))
-      .concat(ev('weekly', fromMin(hm(s.workEnd) - 30), 10, '🗓️ 週次レビュー（10分）', 'weekly'))
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Tsuzuri//Journal//JA', 'CALSCALE:GREGORIAN']
+      .concat(t.morning ? ev('morning', t.morning, 2, '🌅 朝のひととき', 'morning', 'FREQ=DAILY') : [])
+      .concat(ev('evening', t.shutdown, 3, '🌙 夜のふりかえり', 'shutdown', 'FREQ=DAILY'))
+      .concat(ev('weekly', fromMin(hm(t.shutdown) - 30), 5, '🍃 週のふりかえり', 'weekly', 'FREQ=WEEKLY;BYDAY=SU'))
       .concat(['END:VCALENDAR']);
     return lines.join('\r\n') + '\r\n';
   }
@@ -1972,19 +1836,19 @@
   }
   function checkReminders() {
     const s = state.settings;
-    if (!s.notify || !state.started || !isWorkday()) return;
+    if (!s.notify || !state.started) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     const t = reminderTimes();
     const n = nowMin();
     const today = todayStr();
-    const due = (time) => n >= hm(time) && n < hm(time) + 10;
+    const due = (time) => time && n >= hm(time) && n < hm(time) + 10;
     if (due(t.morning) && !ofKind('morning', today).length && !notified.has(today + 'm')) {
       notified.add(today + 'm');
-      notify('☀️ 始業前チェックイン', '3分で今日の「1つ」を決めましょう', 'morning');
+      notify('🌅 おはようございます', '今日大切にしたいことを、ひとつ思い浮かべてみませんか', 'morning');
     }
     if (due(t.shutdown) && !ofKind('shutdown', today).length && !notified.has(today + 's')) {
       notified.add(today + 's');
-      notify('🌙 終業シャットダウン', '5分で今日を振り返って、仕事を閉じましょう', 'shutdown');
+      notify('🌙 今日もおつかれさまでした', 'よかったことを3つ、思い出してみましょう', 'shutdown');
     }
   }
 
