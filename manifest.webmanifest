@@ -1,14 +1,25 @@
 {
-  "name": "綴 Tsuzuri — ジャーナル",
+  "name": "綴 Tsuzuri — ワークジャーナル",
   "short_name": "Tsuzuri",
-  "description": "ブラウザだけで動く、プライベートで高機能なジャーナリングアプリ",
+  "description": "研究にもとづく、仕事の前・最中・後のためのプライベートなジャーナリングアプリ",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#f6f3ee",
   "theme_color": "#c2643c",
   "lang": "ja",
+  "categories": ["productivity", "lifestyle", "health"],
   "icons": [
-    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "クイックチェックイン", "short_name": "チェックイン", "url": "./?flow=checkin", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "始業前チェックイン", "short_name": "始業前", "url": "./?flow=morning", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "終業シャットダウン", "short_name": "終業", "url": "./?flow=shutdown", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

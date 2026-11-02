@@ -1,5 +1,5 @@
-/* オフライン対応 Service Worker（stale-while-revalidate） */
-const CACHE = 'tsuzuri-v1';
+/* オフライン対応 Service Worker */
+const CACHE = 'tsuzuri-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -11,6 +11,9 @@ const ASSETS = [
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
@@ -25,19 +28,34 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// ネットワーク優先（常に最新版）＋ オフライン時はキャッシュ
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  const isPage = req.mode === 'navigate';
   e.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.ok) cache.put(req, res.clone());
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(isPage ? './index.html' : req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(isPage ? './index.html' : req, { ignoreSearch: true }))
+  );
+});
+
+// 通知をタップしたら該当セッションを開く
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('navigate' in c) return c.navigate(url).then((w) => (w || c).focus());
+      }
+      return self.clients.openWindow(url);
     })
   );
 });

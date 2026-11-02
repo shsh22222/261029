@@ -3,12 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>綴 Tsuzuri — ジャーナル</title>
-  <meta name="description" content="ブラウザだけで動く、プライベートで高機能なジャーナリングアプリ">
+  <title>綴 Tsuzuri — ワークジャーナル</title>
+  <meta name="description" content="研究にもとづく、仕事の前・最中・後のためのプライベートなジャーナリングアプリ">
   <meta name="theme-color" content="#c2643c">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tsuzuri">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="css/style.css">
   <script>
     // テーマのちらつき防止
@@ -35,13 +40,13 @@
   <header class="topbar">
     <button class="icon-btn" id="menuBtn" aria-label="メニュー">☰</button>
     <div class="brand-sm">綴 <span>Tsuzuri</span></div>
-    <button class="icon-btn" id="topNewBtn" aria-label="新しく書く">＋</button>
+    <button class="icon-btn" id="topSearchBtn" aria-label="検索">🔍</button>
   </header>
 
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar">
       <div class="brand"><span class="brand-mark">綴</span><span class="brand-name">Tsuzuri<small>journal</small></span></div>
-      <button class="btn primary block" id="newEntryBtn">＋ 今日を書く <kbd>Ctrl+N</kbd></button>
+      <button class="btn primary block" id="newEntryBtn">＋ 記録する <kbd>Ctrl+J</kbd></button>
       <div class="search">
         <input id="searchInput" type="search" placeholder="検索…  (Ctrl+K)" aria-label="検索">
       </div>
@@ -50,6 +55,7 @@
         <button data-view="list"><span>📚</span>すべての記録</button>
         <button data-view="calendar"><span>📅</span>カレンダー</button>
         <button data-view="stats"><span>📈</span>インサイト</button>
+        <button data-view="guide"><span>📖</span>ガイドと根拠</button>
         <button data-view="settings"><span>⚙️</span>設定</button>
       </nav>
       <div class="side-section">
@@ -61,6 +67,14 @@
     <div class="scrim" id="scrim"></div>
     <main id="main" class="main" tabindex="-1"></main>
   </div>
+
+  <nav class="bottombar" id="bottombar" aria-label="メインナビゲーション">
+    <button data-view="home"><span>🏠</span>ホーム</button>
+    <button data-view="list"><span>📚</span>記録</button>
+    <button class="bb-add" id="bbAdd" aria-label="記録する"><span>＋</span></button>
+    <button data-view="calendar"><span>📅</span>カレンダー</button>
+    <button data-view="stats"><span>📈</span>インサイト</button>
+  </nav>
 
   <div id="modal" class="modal" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
