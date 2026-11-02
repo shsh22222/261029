@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>綴 Tsuzuri — ジャーナル</title>
+  <meta name="description" content="ブラウザだけで動く、プライベートで高機能なジャーナリングアプリ">
+  <meta name="theme-color" content="#c2643c">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // テーマのちらつき防止
+    try {
+      var s = JSON.parse(localStorage.getItem('tsuzuri.settings') || '{}');
+      if (s.theme && s.theme !== 'system') document.documentElement.dataset.theme = s.theme;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <!-- ロック画面 -->
+  <div id="lock" class="lock" hidden>
+    <form id="lockForm" class="lock-card" autocomplete="off">
+      <div class="lock-logo">綴</div>
+      <h1>ジャーナルはロックされています</h1>
+      <p class="muted">パスフレーズを入力して開いてください。</p>
+      <input id="lockPass" type="password" placeholder="パスフレーズ" autocomplete="current-password" required>
+      <p id="lockError" class="error" hidden>パスフレーズが違います</p>
+      <button class="btn primary block" type="submit" id="lockSubmit">ロック解除</button>
+    </form>
+  </div>
+
+  <!-- モバイル用トップバー -->
+  <header class="topbar">
+    <button class="icon-btn" id="menuBtn" aria-label="メニュー">☰</button>
+    <div class="brand-sm">綴 <span>Tsuzuri</span></div>
+    <button class="icon-btn" id="topNewBtn" aria-label="新しく書く">＋</button>
+  </header>
+
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="brand-mark">綴</span><span class="brand-name">Tsuzuri<small>journal</small></span></div>
+      <button class="btn primary block" id="newEntryBtn">＋ 今日を書く <kbd>Ctrl+N</kbd></button>
+      <div class="search">
+        <input id="searchInput" type="search" placeholder="検索…  (Ctrl+K)" aria-label="検索">
+      </div>
+      <nav class="nav" id="nav">
+        <button data-view="home"><span>🏠</span>ホーム</button>
+        <button data-view="list"><span>📚</span>すべての記録</button>
+        <button data-view="calendar"><span>📅</span>カレンダー</button>
+        <button data-view="stats"><span>📈</span>インサイト</button>
+        <button data-view="settings"><span>⚙️</span>設定</button>
+      </nav>
+      <div class="side-section">
+        <h4>タグ</h4>
+        <div id="tagList" class="tag-list"></div>
+      </div>
+      <div class="side-foot" id="sideFoot"></div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+    <main id="main" class="main" tabindex="-1"></main>
+  </div>
+
+  <div id="modal" class="modal" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/markdown.js"></script>
+  <script src="js/crypto.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

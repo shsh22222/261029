@@ -1,0 +1,14 @@
+{
+  "name": "綴 Tsuzuri — ジャーナル",
+  "short_name": "Tsuzuri",
+  "description": "ブラウザだけで動く、プライベートで高機能なジャーナリングアプリ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ee",
+  "theme_color": "#c2643c",
+  "lang": "ja",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
