@@ -1106,3 +1106,162 @@ button, .today-pill, .qtype, .emo-chip { -webkit-tap-highlight-color: transparen
 }
 .toolbar .fmt-group button:hover, .toolbar .fmt-toggle:hover { background: var(--surface-2); color: var(--text); }
 .support a { color: var(--accent-2); font-weight: 700; white-space: nowrap; }
+
+/* =================================================================
+   v6: ととのえる（呼吸・マインドフルネス・からだ）
+   ================================================================= */
+:root { --calm-1: #dfeee8; --calm-2: #b9d8cd; --orb: #6fa595; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme="sepia"]) { --calm-1: #1c2b27; --calm-2: #2b443d; --orb: #7fb8a7; } }
+:root[data-theme="dark"] { --calm-1: #1c2b27; --calm-2: #2b443d; --orb: #7fb8a7; }
+
+/* ホーム：クイックスタート */
+.quick-sec { margin-top: 22px; }
+.quick-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.quick {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 84px; padding: 10px 4px;
+  border: 0; border-radius: 16px; background: var(--surface); color: var(--text); font-size: .78rem; font-weight: 600; text-align: center; line-height: 1.35;
+}
+.quick > span { font-size: 1.45rem; line-height: 1; }
+.quick.more { background: transparent; border: 1px dashed var(--border); color: var(--muted); }
+.quick.more .ic { width: 24px; height: 24px; }
+.quick:hover { background: var(--accent-soft); }
+.today-pill.static { cursor: default; }
+
+/* ととのえる画面 */
+.pr-list { display: flex; flex-direction: column; gap: 8px; }
+.pr-card {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 14px 16px;
+  border: 1px solid transparent; border-radius: 16px; background: var(--surface); color: var(--text);
+}
+.pr-card:hover { border-color: var(--accent); }
+.pc-icon { font-size: 1.7rem; width: 40px; text-align: center; flex-shrink: 0; }
+.pc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pc-text b { font-weight: 700; }
+.pc-text span { color: var(--muted); font-size: .84rem; }
+.pc-min { color: var(--accent-2); font-weight: 700; font-size: .8rem; flex-shrink: 0; }
+.pr-card.log { border: 1px dashed var(--border); background: transparent; }
+.pr-card.log .pc-icon { color: var(--accent-2); font-size: 1.4rem; }
+.section-title .muted { font-weight: 600; letter-spacing: 0; }
+
+/* 練習：はじめる前・あと */
+.view.practice { max-width: 560px; padding-top: 16px; }
+.pr-hero { text-align: center; padding: 18px 0 8px; }
+.pr-icon { font-size: 3.2rem; width: 96px; height: 96px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; background: var(--calm-1); }
+.pr-icon.done { animation: pop .5s ease; }
+.pr-hero h1 { font-family: var(--font-serif); font-weight: 600; margin: 0 0 6px; font-size: 1.6rem; }
+.pr-hero p { margin: 0; color: var(--muted); }
+.pr-durs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 14px 0; }
+.pr-durs .chip { min-width: 64px; min-height: 40px; }
+.pr-len { text-align: center; color: var(--accent-2); font-weight: 700; margin: 10px 0; }
+.pr-before { margin: 18px 0 14px; }
+.pr-before > p { text-align: center; margin: 0 0 10px; font-weight: 600; }
+.face-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.face {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 0 6px; border-radius: 14px;
+  border: 2px solid transparent; background: var(--surface); color: var(--muted);
+}
+.face span { font-size: 1.75rem; filter: grayscale(.55); opacity: .75; transition: transform .15s; }
+.face small { font-size: .66rem; }
+.face.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.face.on span { filter: none; opacity: 1; transform: scale(1.1); }
+.btn.big { padding: 15px 20px; font-size: 1.05rem; border-radius: 16px; }
+.pr-options { display: flex; justify-content: center; gap: 18px; margin: 14px 0 6px; font-size: .88rem; color: var(--muted); }
+.pr-options label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; }
+.pr-options input { width: 18px; height: 18px; accent-color: var(--accent); }
+.pr-safety { text-align: center; font-size: .8rem; color: var(--muted); margin: 6px 0 14px; }
+.pr-delta { text-align: center; font-weight: 600; min-height: 1.6em; margin: 4px 0 14px; color: var(--accent-2); }
+.practice-after .input { margin-bottom: 6px; }
+
+/* 練習中（没入モード） */
+body.immersive .sidebar, body.immersive .topbar, body.immersive .bottombar { display: none !important; }
+body.immersive .app { grid-template-columns: 1fr; }
+body.immersive { background: var(--calm-1); }
+.view.practice-run {
+  max-width: 640px; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+  padding: max(16px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+}
+.run-top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-weight: 600; font-size: .9rem; }
+.run-left { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.orb-wrap { flex: 1; display: grid; place-items: center; position: relative; min-height: 340px; }
+.orb, .orb-ring { grid-area: 1 / 1; width: min(68vw, 300px); aspect-ratio: 1; border-radius: 50%; }
+.orb-ring { border: 2px dashed var(--calm-2); }
+.orb {
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--orb) 55%, #fff), var(--orb));
+  transform: scale(.52); transition-property: transform; transition-timing-function: ease-in-out; transition-duration: 1s;
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--orb) 35%, transparent);
+}
+.orb-text { grid-area: 1 / 1; display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 1; color: #fff; text-shadow: 0 1px 8px rgba(0, 0, 0, .25); }
+.orb-text b { font-size: 1.25rem; font-weight: 700; word-break: auto-phrase; text-align: center; max-width: 60vw; }
+.orb-text span { font-size: 1rem; font-variant-numeric: tabular-nums; opacity: .9; }
+.step-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; text-align: center; padding: 20px 4px; }
+.step-no { margin: 0; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.step-text { margin: 0; font-family: var(--font-serif); font-size: 1.45rem; line-height: 1.8; word-break: auto-phrase; text-wrap: pretty; min-height: 5.4em; }
+.step-text.show { animation: fadein .7s ease; }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.step-bar { height: 4px; border-radius: 999px; background: var(--calm-2); overflow: hidden; max-width: 320px; width: 100%; margin: 0 auto; }
+.step-bar span { display: block; height: 100%; width: 0; background: var(--accent); }
+#stepNext { align-self: center; min-width: 220px; }
+.run-controls { display: flex; justify-content: center; gap: 12px; }
+.run-controls .btn { min-width: 120px; min-height: 48px; background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.practice-run.paused .orb, .practice-run.paused .step-text { opacity: .55; }
+
+/* 運動の記録 */
+.act-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+.act {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 4px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--surface); font-size: .82rem; font-weight: 600; color: var(--muted);
+}
+.act span { font-size: 1.5rem; }
+.act.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.min-input { width: 84px !important; text-align: center; border-radius: 999px; padding: 6px 10px; }
+.practice-log .pr-durs { justify-content: flex-start; margin: 0; }
+
+/* 朝：眠りの選択 */
+.choice-row { display: flex; flex-direction: column; gap: 8px; }
+.choice {
+  display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 16px; text-align: left;
+  border: 1px solid var(--border); background: var(--surface); font-weight: 600; font-size: 1rem; color: var(--text);
+}
+.choice span { font-size: 1.6rem; }
+.choice.on { border-color: var(--accent); background: var(--accent-soft); }
+
+/* 傾向：からだとこころ */
+.sub-h { margin: 16px 0 8px; font-size: .82rem; color: var(--muted); font-weight: 700; }
+.sub-h:first-of-type { margin-top: 4px; }
+.sub-h b { color: var(--text); font-size: .95rem; }
+.week-bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; height: 90px; align-items: end; }
+.wb { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+.wb span { width: 100%; max-width: 26px; background: var(--accent); border-radius: 6px 6px 2px 2px; min-height: 2px; }
+.wb small { font-size: .7rem; color: var(--muted); }
+.cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cmp > div { background: var(--bg); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.cmp span { font-size: 1.6rem; }
+.cmp b { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.cmp small { font-size: .72rem; color: var(--muted); }
+.delta-list { display: flex; flex-direction: column; gap: 6px; }
+.delta-list > div { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg); border-radius: 12px; font-size: .9rem; }
+.delta-list b { font-variant-numeric: tabular-nums; }
+.delta-list b.up { color: var(--accent-2); }
+.delta-list small { color: var(--muted); font-size: .72rem; }
+
+/* 一覧・カレンダー切り替え */
+.view-switch { margin-left: auto; }
+.view-switch button { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; }
+.view-switch .ic { width: 16px; height: 16px; }
+.calendar .view-switch { margin: 0 0 14px; display: inline-flex; }
+
+@media (max-width: 760px) {
+  .quick { min-height: 76px; font-size: .72rem; }
+  .quick > span { font-size: 1.3rem; }
+  .step-text { font-size: 1.25rem; }
+  .face span { font-size: 1.55rem; }
+  .view-head .view-switch { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orb { transition: none !important; transform: scale(.8) !important; }
+  .orb[data-phase="in"], .orb[data-phase="in2"] { box-shadow: 0 0 0 10px var(--calm-2); }
+}
+@media (max-width: 760px) {
+  body[data-view="practice"] .bottombar, body[data-view="practice"] .topbar { display: none; }
+  body[data-view="practice"] .view.practice { padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+}

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const { MOODS, PROMPTS, TEMPLATES, ENERGY, EMOTIONS, RESEARCH, FLOWS } = window.JData;
+  const { MOODS, PROMPTS, TEMPLATES, ENERGY, EMOTIONS, RESEARCH, FLOWS, BREATHS, MINDS, MOVES, ACTIVITIES } = window.JData;
   const esc = MD.esc;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
@@ -12,7 +12,7 @@
   const DEFAULT_SETTINGS = {
     theme: 'system', font: 'sans', fontSize: 17, dailyGoal: 400,
     autoLockMin: 0, weekStart: 0, editorMode: 'write', spellcheck: false,
-    morningTime: '07:30', eveningTime: '21:30', notify: false,
+    morningTime: '07:30', eveningTime: '21:30', notify: false, practiceSound: false, practiceHaptics: true,
   };
 
   const state = {
@@ -148,6 +148,8 @@
     edit: '<path d="M4.5 19.5h3.8L19 8.8 15.2 5 4.5 15.7z"/><path d="m13.5 6.7 3.8 3.8"/>',
     expand: '<path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/>',
     text: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
+    wind: '<path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 13h15a3 3 0 1 1-3 3"/><path d="M3 17h6"/>',
+    list: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   };
   function ic(name) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
   function hydrateIcons(root = document) { $$('[data-ic]', root).forEach((el) => { el.innerHTML = ic(el.dataset.ic); }); }
@@ -261,6 +263,7 @@
       case 'weekly': return d.self || j(d.good);
       case 'expressive': return d.text || '';
       case 'future': return d.vision || '';
+      case 'breath': case 'mind': case 'move': return [d.minutes ? d.minutes + '分' : '', d.before && d.after ? '気分 ' + moodOf(d.before).e + ' → ' + moodOf(d.after).e : '', d.note || ''].filter(Boolean).join('　');
       default: return null;
     }
   }
@@ -309,18 +312,21 @@
       stopFlowTimer();
       state.flow = null;
     }
+    if (state.view === 'practice' && view !== 'practice') { stopPractice(); if (state.practice && state.practice.phase === 'run') state.practice = null; }
+    document.body.classList.remove('immersive');
     if (view === 'editor' && state.view !== 'editor') state.prevView = state.view;
     if (view === 'read' && state.view !== 'editor' && state.view !== 'read') state.readFrom = state.view;
     await leaveEditor();
     document.body.classList.remove('focus-mode', 'nav-open');
     state.view = view;
     if ((view === 'editor' || view === 'read') && opts.id) state.currentId = opts.id;
-    $$('#nav button, #bottombar button[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+    const navView = view === 'calendar' && window.matchMedia('(max-width: 760px)').matches ? 'list' : view === 'practice' ? 'body' : view;
+    $$('#nav button, #bottombar button[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === navView || (b.closest('#nav') && b.dataset.view === view)));
     document.body.dataset.view = view;
     const main = $('#main');
     main.scrollTop = 0;
     window.scrollTo(0, 0);
-    ({ home: renderHome, list: renderList, calendar: renderCalendar, stats: renderStats, settings: renderSettings, editor: renderEditor, read: renderRead, flow: renderFlow, guide: renderGuide })[view]();
+    ({ home: renderHome, list: renderList, calendar: renderCalendar, stats: renderStats, settings: renderSettings, editor: renderEditor, read: renderRead, flow: renderFlow, guide: renderGuide, body: renderBody, practice: renderPractice })[view]();
     renderSidebar();
     if (opts.focus !== false && view !== 'editor') main.focus({ preventScroll: true });
   }
@@ -398,26 +404,34 @@
     const care = state.careDismissed === today ? null : careSignal();
     const md = today.slice(5);
     const memory = all.find((e) => e.date < today && e.date.slice(5) === md) || all.find((e) => e.date === addDays(today, -30) && e.kind !== 'checkin');
-    const f = rec ? FLOWS[rec] : null;
+    const f = care && rec === 'breath:sigh' ? null : recInfo(rec);
+    const movedMin = ofKind('move', today).reduce((t, e) => t + (Number(e.data && e.data.minutes) || 0), 0);
+    const calmN = ofKind('breath', today).length + ofKind('mind', today).length;
+    const quick = [['breath:sigh', '🌬️', '1分の呼吸'], ['breath:calm', '🍃', 'ゆったり呼吸'], ['mind:pause', '⏸️', '小休止'], ['move:desk', '🙆', 'ストレッチ']].filter((q) => q[0] !== rec).slice(0, 3);
 
-    const pill = (id, done, label) => '<button class="today-pill' + (done ? ' done' : '') + (rec === id ? ' rec' : '') + '" data-flow="' + id + '"><span>' + FLOWS[id].icon + '</span>' + label + (done ? '<i aria-label="済み">✓</i>' : '') + '</button>';
+    const pill = (id, done, label) => '<button class="today-pill' + (done ? ' done' : '') + (rec === id && !done ? ' rec' : '') + '" data-flow="' + id + '"><span>' + FLOWS[id].icon + '</span>' + label + (done ? '<i aria-label="済み">✓</i>' : '') + '</button>';
 
     $('#main').innerHTML =
       '<div class="view home">' +
       '<header class="home-head"><p class="eyebrow">' + fmtDate(today) + '</p><h1>' + greeting() + '</h1></header>' +
 
-      (care ? '<section class="note-card care"><p><b>少ししんどい日みたいですね。</b><br>気持ちに名前をつけて、自分にやさしい言葉をかけてみませんか。</p>' +
-        '<div class="row gap wrap"><button class="btn primary small" data-flow="reset">🫧 こころのケア</button><button class="btn ghost small" id="careDismiss">あとで</button></div>' +
+      (care ? '<section class="note-card care"><p><b>少ししんどい日みたいですね。</b><br>まずはゆっくり息を吐いて。落ち着いたら、自分にやさしい言葉をかけてみませんか。</p>' +
+        '<div class="row gap wrap"><button class="btn primary small" data-flow="breath:sigh">🌬️ 1分の呼吸</button><button class="btn small" data-flow="reset">🫧 こころのケア</button><button class="btn ghost small" id="careDismiss">あとで</button></div>' +
         (lowDays >= 3 ? supportHtml() : '') + '</section>' : '') +
 
-      (f ? '<button class="hero-card" data-flow="' + f.id + '"><span class="hc-icon">' + f.icon + '</span><span class="hc-text"><small>いまのおすすめ・' + f.minutes + '分</small><b>' + esc(f.name) + '</b><span>' + esc(f.sub) + '</span></span><span class="hc-go" aria-hidden="true">→</span></button>'
-        : '<div class="hero-card calm"><span class="hc-icon">🌿</span><span class="hc-text"><b>今日の記録はそろいました</b><span>ゆっくり休んでくださいね。</span></span></div>') +
+      (f ? '<button class="hero-card" data-flow="' + f.rec + '"><span class="hc-icon">' + f.icon + '</span><span class="hc-text"><small>いまのおすすめ・' + f.minutes + '分</small><b>' + esc(f.name) + '</b><span>' + esc(f.sub) + '</span></span><span class="hc-go" aria-hidden="true">→</span></button>'
+        : care ? '' : '<div class="hero-card calm"><span class="hc-icon">🌿</span><span class="hc-text"><b>今日の記録はそろいました</b><span>ゆっくり休んでくださいね。</span></span></div>') +
 
       '<div class="today-strip" aria-label="今日の記録">' +
       pill('morning', !!morning, '朝') +
       pill('checkin', false, 'ひとこと' + (moments.length ? '<b>' + moments.length + '</b>' : '')) +
       pill('shutdown', !!night, '夜') +
+      (movedMin ? '<span class="today-pill done static"><span>🙆</span>' + movedMin + '分 動いた</span>' : '') +
+      (calmN ? '<span class="today-pill done static"><span>🌬️</span>' + calmN + '回 整えた</span>' : '') +
       '</div>' +
+      '<section class="section quick-sec"><h2 class="section-title">からだから、ととのえる</h2><div class="quick-row">' +
+      quick.map((q) => '<button class="quick" data-flow="' + q[0] + '"><span>' + q[1] + '</span>' + q[2] + '</button>').join('') +
+      '<button class="quick more" data-goto="body"><span>' + ic('wind') + '</span>すべて</button></div></section>' +
 
       (intention ? '<section class="note-card intention"><small>今日大切にしたいこと</small><p>' + esc(intention) + '</p>' + (lookforward ? '<small>楽しみ</small><p>' + esc(lookforward) + '</p>' : '') + '</section>' : '') +
 
@@ -431,7 +445,7 @@
 
       (!all.length ? '<section class="welcome"><h2>はじめまして</h2>' +
         '<p>綴は、短い問いに答えていくだけで、気持ちを整え、毎日の中のよいことに気づけるジャーナルです。</p>' +
-        '<p>まずは今夜、<b>よかったことを3つ</b>書くところから始めてみてください。</p>' +
+        '<p>まずは今夜、<b>よかったことを3つ</b>書くところから。気持ちが落ち着かないときは「ととのえる」の呼吸もどうぞ。</p>' +
         '<p class="muted small">記録はこの端末のブラウザの中だけに保存され、どこにも送信されません。</p>' +
         '<button class="btn ghost small" data-goto="guide">くわしく見る</button></section>' : '') +
 
@@ -458,10 +472,10 @@
     const terms = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const list = filteredEntries();
     let html = '<div class="view list">' +
-      '<header class="view-head"><div><p class="eyebrow">' + (f.q ? '「' + esc(f.q) + '」の検索結果' : 'これまでの記録') + '</p><h1>記録 <small class="muted">' + list.length + '件</small></h1></div></header>' +
+      '<header class="view-head"><div><p class="eyebrow">' + (f.q ? '「' + esc(f.q) + '」の検索結果' : 'これまでの記録') + '</p><h1>記録 <small class="muted">' + list.length + '件</small></h1></div>' + viewSwitch('list') + '</header>' +
       '<div class="filters">' +
       '<select class="input select-sm" id="fKind" aria-label="種類"><option value="">すべての種類</option>' +
-      ['morning', 'checkin', 'shutdown', 'reset', 'expressive', 'future', 'weekly', 'free'].map((k) => '<option value="' + k + '"' + (f.kind === k ? ' selected' : '') + '>' + (k === 'free' ? '✍️ 自由に書いたもの' : FLOWS[k].icon + ' ' + FLOWS[k].name) + '</option>').join('') + '</select>' +
+      ['morning', 'checkin', 'shutdown', 'breath', 'mind', 'move', 'reset', 'expressive', 'future', 'weekly', 'free'].map((k) => '<option value="' + k + '"' + (f.kind === k ? ' selected' : '') + '>' + (k === 'free' ? '✍️ 自由に書いたもの' : FLOWS[k].icon + ' ' + FLOWS[k].name) + '</option>').join('') + '</select>' +
       '<select class="input select-sm" id="fMood" aria-label="気分"><option value="">すべての気分</option>' +
       MOODS.map((m) => '<option value="' + m.v + '"' + (f.mood === m.v ? ' selected' : '') + '>' + m.e + ' ' + m.l + '</option>').join('') + '</select>' +
       '<button class="chip' + (f.fav ? ' active' : '') + '" id="favFilter">★</button>' +
@@ -495,7 +509,15 @@
     const ct = $('#clearTag'); if (ct) ct.onclick = () => { f.tag = null; renderList(); renderSidebar(); };
     const ca = $('#clearAll'); if (ca) ca.onclick = () => { Object.assign(f, { q: '', tag: null, mood: null, fav: false, kind: null }); $('#searchInput').value = ''; renderList(); renderSidebar(); };
     const en = $('#emptyNew'); if (en) en.onclick = () => writeNew();
+    bindViewSwitch();
   }
+
+  function viewSwitch(cur) {
+    return '<div class="seg view-switch" role="tablist">' +
+      '<button data-switch="list"' + (cur === 'list' ? ' class="on" aria-selected="true"' : '') + '>' + ic('list') + '一覧</button>' +
+      '<button data-switch="calendar"' + (cur === 'calendar' ? ' class="on" aria-selected="true"' : '') + '>' + ic('calendar') + 'カレンダー</button></div>';
+  }
+  function bindViewSwitch() { $$('[data-switch]').forEach((b) => (b.onclick = () => { if (b.dataset.switch !== state.view) go(b.dataset.switch); })); }
 
   /* ================= カレンダー ================= */
   function renderCalendar() {
@@ -538,7 +560,7 @@
     $('#main').innerHTML =
       '<div class="view calendar">' +
       '<header class="view-head"><div><p class="eyebrow">カレンダー</p><h1>' + y + '年' + (mo + 1) + '月</h1></div>' +
-      '<div class="row gap"><button class="btn icon" id="calPrev" aria-label="前の月">‹</button><button class="btn" id="calToday">今月</button><button class="btn icon" id="calNext" aria-label="次の月">›</button></div></header>' +
+      '<div class="row gap"><button class="btn icon" id="calPrev" aria-label="前の月">‹</button><button class="btn" id="calToday">今月</button><button class="btn icon" id="calNext" aria-label="次の月">›</button></div></header>' + viewSwitch('calendar') +
       '<p class="muted small">この月の記録: ' + monthEntries + '件' + (moodN ? ' · 平均の気分 ' + moodOf(Math.round(moodSum / moodN)).e + ' ' + (moodSum / moodN).toFixed(1) : '') + '</p>' +
       '<div class="cal-grid">' + heads.map((h) => '<div class="cal-head">' + h + '</div>').join('') + cells + '</div>' +
       '<section class="section"><div class="section-head"><h2>' + fmtDate(sel) + '</h2>' + (sel <= today ? '<button class="btn small" id="calWrite">＋ この日に書く</button>' : '') + '</div>' +
@@ -557,6 +579,7 @@
       };
     });
     const cw = $('#calWrite'); if (cw) cw.onclick = () => writeNew(sel);
+    bindViewSwitch();
     bindCards(main);
   }
 
@@ -629,6 +652,7 @@
     const freq = new Map();
     const stop = new Set(['こと', 'もの', 'ため', 'よう', 'それ', 'これ', '今日', '自分', 'the', 'and', 'for', 'that', 'with', 'this']);
     for (const e of all) {
+      if (['breath', 'mind', 'move'].includes(e.kind)) continue;
       const words = (e.title + ' ' + MD.plain(e.body)).match(/[一-龯々]{2,}|[ァ-ヴー]{2,}|[A-Za-z]{3,}/g) || [];
       for (const w of words) { const k = w.toLowerCase(); if (!stop.has(k)) freq.set(k, (freq.get(k) || 0) + 1); }
     }
@@ -661,6 +685,7 @@
       : '<p class="muted">気持ちに名前をつけていくと、ここに表示されます。</p>';
 
     const stat = (v, l) => '<div class="mini-stat"><b>' + v + '</b><span>' + l + '</span></div>';
+    const bodyHtml = bodyInsights(all, map, today);
     $('#main').innerHTML =
       '<div class="view stats">' +
       '<header class="view-head"><div><p class="eyebrow">こころの傾向</p><h1>最近のあなた</h1></div></header>' +
@@ -675,6 +700,7 @@
       '<section class="card"><h2>曜日ごとの気分</h2>' + wdRow + '</section>' +
       (energyHours ? '<section class="card"><h2>時間帯ごとの元気さ</h2>' + energyHours + '</section>' : '<section class="card"><h2>よく使う言葉</h2><div class="cloud">' + cloud + '</div></section>') +
       '</div>' +
+      bodyHtml +
       '<section class="card"><h2>1年のあゆみ</h2><div class="heatmap-wrap"><div class="heatmap-months">' + monthsRow + '</div><div class="heatmap">' + heat + '</div></div>' +
       '<div class="heat-legend">少ない <i class="hm l0"></i><i class="hm l1"></i><i class="hm l2"></i><i class="hm l3"></i><i class="hm l4"></i> 多い</div></section>' +
       (energyHours ? '<section class="card"><h2>よく使う言葉</h2><div class="cloud">' + cloud + '</div></section>' : '') +
@@ -685,6 +711,43 @@
       $('#searchInput').value = b.dataset.word;
       go('list');
     }));
+  }
+
+
+  /** からだの習慣と気分の関係（直近60日） */
+  function bodyInsights(all, map, today) {
+    const from = addDays(today, -59);
+    const dayMood = (ds) => avg((map.get(ds) || []).map((e) => e.mood).filter(Boolean));
+    const movedDays = [], restDays = [], goodSleep = [], badSleep = [];
+    for (let i = 0; i < 60; i++) {
+      const ds = addDays(today, -i);
+      const m = dayMood(ds);
+      if (m == null) continue;
+      const es = map.get(ds) || [];
+      (es.some((e) => e.kind === 'move') ? movedDays : restDays).push(m);
+      const mo = es.find((e) => e.kind === 'morning' && e.data && e.data.sleep);
+      if (mo) (mo.data.sleep >= 3 ? goodSleep : mo.data.sleep <= 1 ? badSleep : []).push(m);
+    }
+    const pr = all.filter((e) => e.date >= from && ['breath', 'mind', 'move'].includes(e.kind) && e.data && e.data.before && e.data.after);
+    const byKind = ['breath', 'mind', 'move'].map((k) => ({ k, d: avg(pr.filter((e) => e.kind === k).map((e) => e.data.after - e.data.before)), n: pr.filter((e) => e.kind === k).length })).filter((x) => x.n);
+    // 今週の運動時間
+    const ws = weekStartStr();
+    const mins = Array.from({ length: 7 }, (_, i) => (map.get(addDays(ws, i)) || []).filter((e) => e.kind === 'move').reduce((t, e) => t + (Number(e.data && e.data.minutes) || 0), 0));
+    const mMax = Math.max(30, ...mins);
+    const cmp = (a, b, la, lb) => (a.length >= 2 && b.length >= 2
+      ? '<div class="cmp"><div><span>' + moodOf(Math.round(avg(a))).e + '</span><b>' + avg(a).toFixed(1) + '</b><small>' + la + '（' + a.length + '日）</small></div>' +
+        '<div><span>' + moodOf(Math.round(avg(b))).e + '</span><b>' + avg(b).toFixed(1) + '</b><small>' + lb + '（' + b.length + '日）</small></div></div>'
+      : '');
+    const moveCmp = cmp(movedDays, restDays, '動いた日', '動かなかった日');
+    const sleepCmp = cmp(goodSleep, badSleep, 'よく眠れた日', '眠れなかった日');
+    const any = moveCmp || sleepCmp || byKind.length || mins.some(Boolean);
+    if (!any) return '<section class="card"><h2>からだとこころ</h2><p class="muted">「ととのえる」で呼吸やストレッチをしたり、運動や眠りを記録したりすると、気分との関係がここに表れます。</p></section>';
+    return '<section class="card"><h2>からだとこころ <small class="muted">60日</small></h2>' +
+      (mins.some(Boolean) ? '<p class="sub-h">今週動いた時間　<b>' + mins.reduce((a, b) => a + b, 0) + '分</b></p><div class="week-bars">' + mins.map((m, i) => '<div class="wb" title="' + m + '分"><span style="height:' + (m / mMax) * 100 + '%"></span><small>' + WEEK[parseDate(addDays(ws, i)).getDay()] + '</small></div>').join('') + '</div>' : '') +
+      (moveCmp ? '<p class="sub-h">動いた日と、そうでない日の気分</p>' + moveCmp : '') +
+      (sleepCmp ? '<p class="sub-h">眠りと気分</p>' + sleepCmp : '') +
+      (byKind.length ? '<p class="sub-h">整えたあとの気分の変化</p><div class="delta-list">' + byKind.map((x) => '<div><span>' + FLOWS[x.k].icon + ' ' + FLOWS[x.k].name + '</span><b class="' + (x.d > 0 ? 'up' : '') + '">' + (x.d > 0 ? '+' : '') + x.d.toFixed(1) + '</b><small>' + x.n + '回の平均</small></div>').join('') + '</div>' : '') +
+      '<p class="muted small">あなた自身の記録から計算した傾向です。因果関係を示すものではありません。</p></section>';
   }
 
   /* ================= 設定 ================= */
@@ -949,6 +1012,355 @@
     startApp();
   }
 
+
+
+  /* ================= ととのえる（呼吸・マインドフルネス・からだ） ================= */
+  const PRACTICE_SETS = { breath: BREATHS, mind: MINDS, move: MOVES };
+  const INTENSITY = [{ v: 1, l: 'ゆるく' }, { v: 2, l: 'ほどよく' }, { v: 3, l: 'しっかり' }];
+  function practiceItem(kind, id) { return (PRACTICE_SETS[kind] || []).find((x) => x.id === id); }
+  function activityOf(v) { return ACTIVITIES.find((x) => x.v === v) || ACTIVITIES[ACTIVITIES.length - 1]; }
+
+  /** "breath:sigh" のような指定から表示用の情報を作る */
+  function recInfo(rec) {
+    if (!rec) return null;
+    const [fid, item] = rec.split(':');
+    const f = FLOWS[fid];
+    if (!f) return null;
+    const it = item && practiceItem(fid, item);
+    return it ? { rec, icon: it.icon, name: it.name, sub: it.sub, minutes: it.minutes } : { rec, icon: f.icon, name: f.name, sub: f.sub, minutes: f.minutes };
+  }
+
+  function weekBody() {
+    const ws = weekStartStr();
+    const es = sorted().filter((e) => e.date >= ws && ['breath', 'mind', 'move'].includes(e.kind));
+    const moveMin = es.filter((e) => e.kind === 'move').reduce((s, e) => s + (Number(e.data && e.data.minutes) || 0), 0);
+    const calmN = es.filter((e) => e.kind !== 'move').length;
+    const deltas = sorted().filter((e) => e.data && e.data.before && e.data.after).map((e) => e.data.after - e.data.before);
+    return { moveMin, calmN, delta: avg(deltas), deltaN: deltas.length };
+  }
+
+  /* ---------- 音・振動・画面スリープ防止 ---------- */
+  let audioCtx = null;
+  function chime(freq, dur = 0.9, vol = 0.05) {
+    if (!state.settings.practiceSound) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audioCtx.currentTime;
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t); o.stop(t + dur + 0.05);
+    } catch (err) { /* 音が使えない環境では無視 */ }
+  }
+  function buzz(ms = 18) { if (state.settings.practiceHaptics !== false && navigator.vibrate) { try { navigator.vibrate(ms); } catch (err) { /* noop */ } } }
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && 'wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+      if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch (err) { wakeLock = null; }
+  }
+
+  /* ---------- 練習の開始・進行 ---------- */
+  function startPractice(kind, id) {
+    if (kind === 'move' && id === 'log') { state.practice = { kind: 'move', log: true, phase: 'log', activity: 'walk', minutes: 20, intensity: 2, after: null, note: '' }; return go('practice'); }
+    const item = practiceItem(kind, id);
+    if (!item) return go('body');
+    state.practice = { kind, item, phase: 'before', before: null, after: null, minutes: item.minutes, note: '', elapsed: 0 };
+    go('practice');
+  }
+
+  function stopPractice() {
+    const pr = state.practice;
+    if (pr && pr.run) { clearTimeout(pr.run.to); clearInterval(pr.run.tick); pr.run.paused = true; }
+    keepAwake(false);
+  }
+
+  function totalSeconds(pr) {
+    if (pr.kind === 'breath') return pr.minutes * 60;
+    return pr.item.steps.reduce((s, x) => s + (x.s || 0), 0);
+  }
+
+  function beginRun() {
+    const pr = state.practice;
+    pr.phase = 'run';
+    pr.run = { started: Date.now(), elapsed: 0, idx: 0, paused: false, segStart: 0, segLeft: null };
+    keepAwake(true);
+    renderPractice();
+    chime(528, 1.6, 0.06);
+    nextSegment();
+    pr.run.tick = setInterval(tickPractice, 500);
+  }
+
+  function segments(pr) { return pr.kind === 'breath' ? pr.item.phases : pr.item.steps; }
+
+  function nextSegment(resume) {
+    const pr = state.practice;
+    const r = pr.run;
+    if (!r || r.paused) return;
+    const segs = segments(pr);
+    if (pr.kind === 'breath') {
+      if (!resume && r.elapsed >= totalSeconds(pr) * 1000 && r.idx % segs.length === 0) return finishRun();
+      const ph = segs[r.idx % segs.length];
+      const dur = resume && r.segLeft != null ? r.segLeft : ph.s * 1000;
+      r.segStart = Date.now(); r.segDur = dur; r.segLeft = null;
+      showBreathPhase(ph, dur, resume);
+      if (!resume) { buzz(); chime({ in: 523, in2: 587, out: 392, hold: 440, hold0: 440 }[ph.type] || 440, 0.7, 0.035); }
+      r.to = setTimeout(() => { r.elapsed += Date.now() - r.segStart; r.idx++; nextSegment(); }, dur);
+    } else {
+      if (r.idx >= segs.length) return finishRun();
+      const st = segs[r.idx];
+      showStep(st, r.idx, segs.length, resume);
+      if (!resume) { buzz(); if (r.idx > 0) chime(660, 1.4, 0.04); }
+      if (st.manual) { r.segStart = Date.now(); r.segDur = null; return; }
+      const dur = resume && r.segLeft != null ? r.segLeft : st.s * 1000;
+      r.segStart = Date.now(); r.segDur = dur; r.segLeft = null;
+      const bar = $('#stepBar');
+      if (bar) { bar.style.transition = 'none'; bar.style.width = (100 * (1 - dur / (st.s * 1000))) + '%'; void bar.offsetWidth; bar.style.transition = 'width ' + (dur / 1000) + 's linear'; bar.style.width = '100%'; }
+      r.to = setTimeout(() => { r.elapsed += Date.now() - r.segStart; r.idx++; nextSegment(); }, dur);
+    }
+  }
+
+  function manualNext() {
+    const r = state.practice && state.practice.run;
+    if (!r || r.paused) return;
+    clearTimeout(r.to);
+    r.elapsed += Date.now() - r.segStart;
+    r.idx++;
+    nextSegment();
+  }
+
+  function togglePause() {
+    const pr = state.practice;
+    const r = pr && pr.run;
+    if (!r) return;
+    if (!r.paused) {
+      r.paused = true;
+      clearTimeout(r.to);
+      const used = Date.now() - r.segStart;
+      r.elapsed += used;
+      r.segLeft = r.segDur != null ? Math.max(300, r.segDur - used) : null;
+      if (pr.kind === 'breath') r.segLeft = null; // 呼吸は区切りの最初からやり直す
+      const bar = $('#stepBar'); if (bar) { const w = getComputedStyle(bar).width; bar.style.transition = 'none'; bar.style.width = w; }
+      $('#prPause').innerHTML = '再開';
+      $('.practice-run').classList.add('paused');
+    } else {
+      r.paused = false;
+      $('#prPause').innerHTML = '一時停止';
+      $('.practice-run').classList.remove('paused');
+      nextSegment(true);
+    }
+  }
+
+  function tickPractice() {
+    const pr = state.practice;
+    const r = pr && pr.run;
+    if (!r || r.paused) return;
+    const el = r.elapsed + (Date.now() - r.segStart);
+    const left = Math.max(0, Math.round(totalSeconds(pr) - el / 1000));
+    const t = $('#prLeft');
+    if (t) t.textContent = pr.kind === 'breath' || !pr.item.steps.some((x) => x.manual) ? fmtSec(left) : '';
+    const c = $('#phaseCount');
+    if (c && r.segDur) c.textContent = Math.max(1, Math.ceil((r.segDur - (Date.now() - r.segStart)) / 1000));
+  }
+
+  function finishRun() {
+    const pr = state.practice;
+    const r = pr.run;
+    if (r) { clearTimeout(r.to); clearInterval(r.tick); pr.elapsed = Math.round((r.elapsed + (r.paused ? 0 : Date.now() - r.segStart)) / 1000); }
+    pr.run = null;
+    keepAwake(false);
+    chime(528, 2.2, 0.06); setTimeout(() => chime(396, 2.4, 0.05), 380);
+    buzz(40);
+    pr.phase = 'after';
+    renderPractice();
+  }
+
+  const SCALE = { in: 1, in2: 1.12, out: 0.52 };
+  function showBreathPhase(ph, dur, resume) {
+    const orb = $('#orb');
+    const label = $('#phaseLabel');
+    if (label) label.textContent = ph.t;
+    if (!orb) return;
+    if (ph.type in SCALE) {
+      orb.style.transitionDuration = (dur / 1000) + 's';
+      orb.style.transform = 'scale(' + SCALE[ph.type] + ')';
+    }
+    orb.dataset.phase = ph.type;
+  }
+
+  function showStep(st, i, n, resume) {
+    const t = $('#stepText');
+    if (!t) return;
+    t.classList.remove('show'); void t.offsetWidth;
+    t.textContent = st.t;
+    t.classList.add('show');
+    $('#stepNo').textContent = (i + 1) + ' / ' + n;
+    $('#stepNext').hidden = !st.manual;
+    $('#stepBarWrap').hidden = !!st.manual;
+  }
+
+  function moodFaces(sel, attr) {
+    return '<div class="face-row">' + MOODS.map((m) => '<button type="button" class="face' + (sel === m.v ? ' on' : '') + '" ' + attr + '="' + m.v + '" aria-label="' + m.l + '"><span>' + m.e + '</span><small>' + m.l + '</small></button>').join('') + '</div>';
+  }
+
+  function renderPractice() {
+    const pr = state.practice;
+    if (!pr) return go('body');
+    const main = $('#main');
+    document.body.classList.toggle('immersive', pr.phase === 'run');
+
+    if (pr.phase === 'log') return renderMoveLog();
+    const it = pr.item;
+    const kindName = FLOWS[pr.kind].name;
+
+    if (pr.phase === 'before') {
+      const durs = pr.kind === 'breath' ? [1, 2, 3, 5] : null;
+      main.innerHTML =
+        '<div class="view practice practice-' + pr.kind + '">' +
+        '<div class="flow-top"><button class="icon-btn" id="prClose" aria-label="閉じる">' + ic('close') + '</button><div class="flow-title">' + esc(kindName) + '</div></div>' +
+        '<div class="pr-hero"><div class="pr-icon">' + it.icon + '</div><h1>' + esc(it.name) + '</h1><p>' + esc(it.sub) + '</p></div>' +
+        (durs ? '<div class="pr-durs" role="radiogroup" aria-label="時間">' + durs.map((m) => '<button type="button" class="chip' + (pr.minutes === m ? ' active' : '') + '" data-min="' + m + '">' + m + '分</button>').join('') + '</div>'
+          : '<p class="pr-len">約' + it.minutes + '分</p>') +
+        '<div class="pr-before"><p>はじめる前の気分は？ <span class="muted small">（あとで変化がわかります）</span></p>' + moodFaces(pr.before, 'data-before') + '</div>' +
+        '<button class="btn primary block big" id="prStart">はじめる</button>' +
+        '<div class="pr-options"><label><input type="checkbox" id="prSound"' + (state.settings.practiceSound ? ' checked' : '') + '> 音で知らせる</label>' +
+        (navigator.vibrate ? '<label><input type="checkbox" id="prHaptic"' + (state.settings.practiceHaptics !== false ? ' checked' : '') + '> 振動</label>' : '') + '</div>' +
+        '<p class="pr-safety">' + (pr.kind === 'breath' ? '苦しくなったら、いつもの呼吸に戻してください。' : pr.kind === 'move' ? '痛みや違和感があるときは、無理をせず休んでください。' : '途中で考えごとが浮かんでも大丈夫。気づいたら、そっと戻りましょう。') + '</p>' +
+        whyHtml(it.research) +
+        '</div>';
+      $('#prClose').onclick = () => go(state.practiceFrom || 'body');
+      $$('[data-min]', main).forEach((b) => (b.onclick = () => { pr.minutes = +b.dataset.min; $$('[data-min]', main).forEach((x) => x.classList.toggle('active', x === b)); }));
+      $$('[data-before]', main).forEach((b) => (b.onclick = () => { pr.before = pr.before === +b.dataset.before ? null : +b.dataset.before; $$('[data-before]', main).forEach((x) => x.classList.toggle('on', +x.dataset.before === pr.before)); }));
+      $('#prSound').onchange = (ev) => { state.settings.practiceSound = ev.target.checked; saveSettings(); if (ev.target.checked) chime(528, 0.8, 0.05); };
+      const hp = $('#prHaptic'); if (hp) hp.onchange = (ev) => { state.settings.practiceHaptics = ev.target.checked; saveSettings(); buzz(30); };
+      $('#prStart').onclick = beginRun;
+      return;
+    }
+
+    if (pr.phase === 'run') {
+      const breath = pr.kind === 'breath';
+      main.innerHTML =
+        '<div class="view practice-run run-' + pr.kind + '">' +
+        '<div class="run-top"><span class="run-name">' + it.icon + ' ' + esc(it.name) + '</span><span class="run-left" id="prLeft">' + (breath || !it.steps.some((x) => x.manual) ? fmtSec(totalSeconds(pr)) : '') + '</span></div>' +
+        (breath
+          ? '<div class="orb-wrap"><div class="orb-ring"></div><div class="orb" id="orb"></div><div class="orb-text"><b id="phaseLabel">準備して</b><span id="phaseCount"></span></div></div>'
+          : '<div class="step-wrap"><p class="step-no" id="stepNo"></p><p class="step-text" id="stepText"></p>' +
+            '<div class="step-bar" id="stepBarWrap"><span id="stepBar"></span></div>' +
+            '<button class="btn primary big" id="stepNext" hidden>できたら次へ</button></div>') +
+        '<div class="run-controls"><button class="btn ghost" id="prPause">一時停止</button><button class="btn ghost" id="prEnd">終える</button></div>' +
+        '</div>';
+      $('#prPause').onclick = togglePause;
+      $('#prEnd').onclick = finishRun;
+      const sn = $('#stepNext'); if (sn) sn.onclick = manualNext;
+      return;
+    }
+
+    // after
+    const delta = pr.before && pr.after ? pr.after - pr.before : null;
+    main.innerHTML =
+      '<div class="view practice practice-after">' +
+      '<div class="pr-hero"><div class="pr-icon done">' + it.icon + '</div><h1>おつかれさまでした</h1>' +
+      '<p>' + esc(it.name) + '・' + Math.max(1, Math.round((pr.elapsed || totalSeconds(pr)) / 60)) + '分</p></div>' +
+      '<div class="pr-before"><p>いまの気分は？</p>' + moodFaces(pr.after, 'data-after') + '</div>' +
+      '<p class="pr-delta" id="prDelta">' + deltaText(pr.before, pr.after) + '</p>' +
+      '<input class="input" id="prNote" placeholder="気づいたこと（任意）" value="' + esc(pr.note) + '" maxlength="200">' +
+      '<div class="flow-nav"><button class="btn ghost" id="prSkip">残さずに閉じる</button><button class="btn primary" id="prSave">残す</button></div>' +
+      '</div>';
+    $$('[data-after]', main).forEach((b) => (b.onclick = () => {
+      pr.after = pr.after === +b.dataset.after ? null : +b.dataset.after;
+      $$('[data-after]', main).forEach((x) => x.classList.toggle('on', +x.dataset.after === pr.after));
+      $('#prDelta').innerHTML = deltaText(pr.before, pr.after);
+    }));
+    $('#prNote').oninput = (ev) => { pr.note = ev.target.value; };
+    $('#prSkip').onclick = () => { state.practice = null; go(state.practiceFrom || 'body'); };
+    $('#prSave').onclick = savePractice;
+    void delta;
+  }
+
+  function deltaText(b, a) {
+    if (!b || !a) return '';
+    const d = a - b;
+    if (d > 0) return moodOf(b).e + ' → ' + moodOf(a).e + '　少し軽くなりましたね';
+    if (d === 0) return moodOf(b).e + ' → ' + moodOf(a).e + '　落ち着いて過ごせましたね';
+    return moodOf(b).e + ' → ' + moodOf(a).e + '　しんどさが残っているみたいです。無理せず休んでくださいね';
+  }
+
+  async function savePractice() {
+    const pr = state.practice;
+    if (!pr || pr.saving) return;
+    pr.saving = true;
+    const it = pr.item;
+    const minutes = pr.log ? pr.minutes : Math.max(1, Math.round((pr.elapsed || totalSeconds(pr)) / 60));
+    const data = pr.log
+      ? { activity: pr.activity, minutes, intensity: pr.intensity, after: pr.after || null, note: pr.note.trim() || null }
+      : { item: it.id, minutes, before: pr.before || null, after: pr.after || null, note: pr.note.trim() || null };
+    const name = pr.log ? activityOf(pr.activity).l : it.name;
+    const lines = ['### ' + name, minutes + '分' + (pr.log ? '・' + INTENSITY.find((x) => x.v === pr.intensity).l : '')];
+    if (data.before && data.after) lines.push('気分 ' + moodOf(data.before).e + ' → ' + moodOf(data.after).e);
+    if (data.note) lines.push('', data.note);
+    const e = newEntry(todayStr(), { kind: pr.kind, title: name, body: lines.join('\n') + '\n', mood: data.after, data });
+    try { await persist(e); } catch (err) { pr.saving = false; return toast('保存できませんでした'); }
+    state.practice = null;
+    toast(pr.kind === 'move' ? 'からだを動かしたこと、残しました' : '残しました');
+    go(state.practiceFrom || 'body');
+  }
+
+  function renderMoveLog() {
+    const pr = state.practice;
+    const main = $('#main');
+    const mins = [10, 20, 30, 45, 60, 90];
+    main.innerHTML =
+      '<div class="view practice practice-log">' +
+      '<div class="flow-top"><button class="icon-btn" id="prClose" aria-label="閉じる">' + ic('close') + '</button><div class="flow-title">運動を記録</div></div>' +
+      '<h1 class="flow-q">どんなふうに動きましたか？</h1>' +
+      '<div class="act-grid">' + ACTIVITIES.map((a) => '<button type="button" class="act' + (pr.activity === a.v ? ' on' : '') + '" data-act="' + a.v + '"><span>' + a.e + '</span>' + a.l + '</button>').join('') + '</div>' +
+      '<div class="fw-block"><div class="fw-label">時間</div><div class="pr-durs">' + mins.map((m) => '<button type="button" class="chip' + (pr.minutes === m ? ' active' : '') + '" data-min="' + m + '">' + m + '分</button>').join('') +
+      '<input class="input min-input" id="minInput" type="number" inputmode="numeric" min="1" max="600" placeholder="ほか" aria-label="分"></div></div>' +
+      '<div class="fw-block"><div class="fw-label">強さ</div><div class="seg big">' + INTENSITY.map((x) => '<button type="button" data-int="' + x.v + '"' + (pr.intensity === x.v ? ' class="on"' : '') + '>' + x.l + '</button>').join('') + '</div></div>' +
+      '<div class="fw-block"><div class="fw-label">動いたあとの気分</div>' + moodFaces(pr.after, 'data-after') + '</div>' +
+      '<input class="input" id="prNote" placeholder="ひとこと（任意）" maxlength="200">' +
+      '<div class="flow-nav"><span></span><button class="btn primary" id="prSave">残す</button></div>' +
+      whyHtml('move') +
+      '</div>';
+    $('#prClose').onclick = () => { state.practice = null; go(state.practiceFrom || 'body'); };
+    $$('[data-act]', main).forEach((b) => (b.onclick = () => { pr.activity = b.dataset.act; $$('[data-act]', main).forEach((x) => x.classList.toggle('on', x === b)); }));
+    $$('[data-min]', main).forEach((b) => (b.onclick = () => { pr.minutes = +b.dataset.min; $('#minInput').value = ''; $$('[data-min]', main).forEach((x) => x.classList.toggle('active', x === b)); }));
+    $('#minInput').oninput = (ev) => { const v = Math.round(+ev.target.value); if (v > 0) { pr.minutes = Math.min(600, v); $$('[data-min]', main).forEach((x) => x.classList.remove('active')); } };
+    $$('[data-int]', main).forEach((b) => (b.onclick = () => { pr.intensity = +b.dataset.int; $$('[data-int]', main).forEach((x) => x.classList.toggle('on', x === b)); }));
+    $$('[data-after]', main).forEach((b) => (b.onclick = () => { pr.after = pr.after === +b.dataset.after ? null : +b.dataset.after; $$('[data-after]', main).forEach((x) => x.classList.toggle('on', +x.dataset.after === pr.after)); }));
+    $('#prNote').oninput = (ev) => { pr.note = ev.target.value; };
+    $('#prSave').onclick = savePractice;
+  }
+
+  /* ---------- 「ととのえる」画面 ---------- */
+  function renderBody() {
+    const wb = weekBody();
+    const card = (kind, it) => '<button class="pr-card" data-practice="' + kind + ':' + it.id + '"><span class="pc-icon">' + it.icon + '</span><span class="pc-text"><b>' + esc(it.name) + '</b><span>' + esc(it.sub) + '</span></span><span class="pc-min">' + it.minutes + '分</span></button>';
+    const today = todayStr();
+    const movedToday = ofKind('move', today).reduce((s, e) => s + (Number(e.data && e.data.minutes) || 0), 0);
+    $('#main').innerHTML =
+      '<div class="view body-view">' +
+      '<header class="view-head"><div><p class="eyebrow">ととのえる</p><h1>からだから、こころを整える</h1></div></header>' +
+      '<section class="mini-stats">' +
+      '<div class="mini-stat"><b>' + wb.moveMin + '<small>分</small></b><span>今週動いた時間</span></div>' +
+      '<div class="mini-stat"><b>' + wb.calmN + '<small>回</small></b><span>今週の呼吸・瞑想</span></div>' +
+      '<div class="mini-stat"><b>' + (wb.delta == null ? '—' : (wb.delta > 0 ? '+' : '') + wb.delta.toFixed(1)) + '</b><span>整えたあとの気分の変化</span></div>' +
+      '</section>' +
+      '<section class="section" id="sec-breath"><h2 class="section-title">呼吸</h2><div class="pr-list">' + BREATHS.map((x) => card('breath', x)).join('') + '</div></section>' +
+      '<section class="section" id="sec-mind"><h2 class="section-title">マインドフルネス</h2><div class="pr-list">' + MINDS.map((x) => card('mind', x)).join('') + '</div></section>' +
+      '<section class="section" id="sec-move"><h2 class="section-title">からだを動かす' + (movedToday ? '<span class="muted small">　今日 ' + movedToday + '分</span>' : '') + '</h2><div class="pr-list">' + MOVES.map((x) => card('move', x)).join('') +
+      '<button class="pr-card log" data-practice="move:log"><span class="pc-icon">＋</span><span class="pc-text"><b>運動を記録する</b><span>散歩・ランニング・ヨガ・筋トレなど</span></span><span class="pc-min"></span></button></div></section>' +
+      '<p class="muted small">持病がある方や体調に不安がある方は、無理のない範囲で行ってください。</p>' +
+      '</div>';
+    const main = $('#main');
+    $$('[data-practice]', main).forEach((b) => (b.onclick = () => { const [k, id] = b.dataset.practice.split(':'); state.practiceFrom = 'body'; startPractice(k, id); }));
+    if (state.bodySection) { const el = $('#sec-' + state.bodySection); state.bodySection = null; if (el) setTimeout(() => el.scrollIntoView({ block: 'start' }), 30); }
+  }
 
   /* ================= 読むページ ================= */
   /** 誘導付きの記録から、上部に表示する「気持ち」の行を除いた本文 */
@@ -1492,25 +1904,41 @@
   }
   function markBackup() { state.settings.lastBackup = Date.now(); saveSettings(); }
 
-  /** 時間帯に合わせた「いまのおすすめ」 */
+  /** 時間帯と今日の状態に合わせた「いまのおすすめ」（"breath:sigh" のように練習も返す） */
   function recommendedFlow() {
     const s = state.settings;
     const n = nowMin();
     const today = todayStr();
+    const eve = hm(s.eveningTime);
     const nightDone = ofKind('shutdown', today).length > 0;
     const weeklyDone = ofKind('weekly', weekStartStr(), today).length > 0;
     const isSunday = new Date().getDay() === 0;
-    if (n >= hm(s.eveningTime) - 120 || n < 240) {
+    const moved = ofKind('move', today).length > 0;
+    const calmedLate = sorted().some((e) => e.date === today && (e.kind === 'breath' || e.kind === 'mind') && new Date(e.createdAt).getHours() * 60 >= eve - 120);
+    if (state.careDismissed !== today && careSignal()) return 'breath:sigh';
+    if (n >= eve - 120 || n < 240) {
       if (!nightDone) return 'shutdown';
-      return isSunday && !weeklyDone ? 'weekly' : null;
+      if (isSunday && !weeklyDone) return 'weekly';
+      return calmedLate ? null : 'breath:sleep';
     }
-    if (!ofKind('morning', today).length && n < 12 * 60) return 'morning';
-    if (isSunday && !weeklyDone) return 'weekly';
+    if (!ofKind('morning', today).length && n < 11 * 60) return 'morning';
+    if (isSunday && !weeklyDone && n >= 15 * 60) return 'weekly';
+    if (n >= 13 * 60 && n < 18 * 60 && !moved) return 'move:desk';
+    if (n >= 11 * 60 && n < 13 * 60 && !moved) return 'move:walk';
     return 'checkin';
   }
 
   /* ---------- フロー（ガイド付きセッション） ---------- */
   function startFlow(id) {
+    const [fid, item] = String(id).split(':');
+    const pf = FLOWS[fid];
+    if (pf && pf.practice) {
+      state.practiceFrom = state.view === 'flow' || state.view === 'practice' ? 'home' : state.view;
+      if (item) return startPractice(fid, item);
+      state.bodySection = fid;
+      return go('body');
+    }
+    id = fid;
     const f = FLOWS[id];
     if (!f) return;
     if (f.once) {
@@ -1614,6 +2042,8 @@
         QUICK_TYPES.map((t) => '<button type="button" class="qtype' + (v.type === t.v ? ' on' : '') + '" data-qtype="' + t.v + '"><span>' + t.e + '</span>' + t.l + '</button>').join('') + '</div>' +
         '<textarea class="input fw-input fw-note" id="fwInput" rows="2" placeholder="何があった？（例：ランチの店員さんが親切だった）" enterkeyhint="done">' + esc(v.note) + '</textarea></div>' +
         '<details class="more-state"' + (v.mood || v.energy || (v.emotions || []).length ? ' open' : '') + '><summary>気分も残す</summary>' + stateWidget(v) + '</details>';
+    } else if (st.type === 'choice') {
+      w = '<div class="choice-row">' + st.options.map((o) => '<button type="button" class="choice' + (a[st.key] === o.v ? ' on' : '') + '" data-choice="' + o.v + '"><span>' + o.e + '</span>' + esc(o.l) + '</button>').join('') + '</div>';
     } else if (st.type === 'line') {
       w = '<input class="input fw-input" id="fwInput" placeholder="' + esc(st.placeholder || '') + '" value="' + esc(a[st.key] || '') + '" enterkeyhint="next">';
     } else if (st.type === 'list' && st.slots) {
@@ -1685,6 +2115,13 @@
       };
     }
     if (st.type === 'timer') bindTimer(fl.timer);
+    if (st.type === 'choice') {
+      $$('[data-choice]', main).forEach((b) => (b.onclick = () => {
+        a[st.key] = +b.dataset.choice; fl.dirty = true;
+        $$('[data-choice]', main).forEach((x) => x.classList.toggle('on', x === b));
+        setTimeout(() => { if (state.flow === fl && fl.step === f.steps.indexOf(st)) { fl.step++; renderFlowStep(); } }, 260);
+      }));
+    }
     if (st.slots) {
       const slots = $$('.slot', main);
       const sync = () => { a[st.key] = slots.map((x) => x.value.trim()).join('\n').replace(/\n+$/, ''); markDirty(); };
@@ -1777,6 +2214,7 @@
           continue;
         }
         case 'line': case 'text': case 'timer': c = v.trim(); break;
+        case 'choice': { const o = st.options.find((x) => x.v === v); c = o ? o.e + ' ' + o.l : ''; break; }
         case 'list': case 'weekGood': c = v.map((x) => '- ' + x).join('\n'); break;
       }
       if (c) out.push('### ' + st.label + '\n' + c);
@@ -1870,11 +2308,15 @@
     const item = (id) => {
       const f = FLOWS[id];
       const done = f.once && ofKind(id, todayStr()).length;
-      return '<button class="sheet-item' + (rec === id ? ' rec' : '') + '" data-flow="' + id + '"><span class="si-icon">' + f.icon + '</span><span class="si-text"><b>' + esc(f.name) + '</b><small>' + esc(f.sub) + '</small></span><span class="si-meta">' + (done ? '済み' : f.minutes + '分') + '</span></button>';
+      return '<button class="sheet-item' + (rec && rec.split(':')[0] === id ? ' rec' : '') + '" data-flow="' + id + '"><span class="si-icon">' + f.icon + '</span><span class="si-text"><b>' + esc(f.name) + '</b><small>' + esc(f.sub) + '</small></span><span class="si-meta">' + (done ? '済み' : f.practice ? '' : f.minutes + '分') + '</span></button>';
     };
     m.innerHTML = '<div class="sheet" role="dialog" aria-label="書く"><div class="sheet-handle"></div>' +
+      '<p class="sheet-label">書く</p>' +
       '<div class="sheet-group">' + ['checkin', 'morning', 'shutdown'].map(item).join('') + '</div>' +
-      '<p class="sheet-label">こころを整える</p>' +
+      '<p class="sheet-label">からだから、ととのえる</p>' +
+      '<div class="sheet-group">' + ['breath', 'mind', 'move'].map(item).join('') +
+      '<button class="sheet-item" data-flow="move:log"><span class="si-icon">🏃</span><span class="si-text"><b>運動を記録</b><small>散歩・ヨガ・筋トレなど</small></span><span class="si-meta"></span></button></div>' +
+      '<p class="sheet-label">じっくり向き合う</p>' +
       '<div class="sheet-group">' + ['reset', 'expressive', 'future', 'weekly'].map(item).join('') + '</div>' +
       '<button class="sheet-item plain" data-free="1"><span class="si-icon">✍️</span><span class="si-text"><b>白紙に自由に書く</b></span><span class="si-meta"></span></button>' +
       '</div>';
@@ -1907,8 +2349,9 @@
       '<section class="guide-intro"><p>綴は、短い問いに答えていくだけで、気持ちを整え、毎日の中にあるよいことに気づけるジャーナルです。どの問いも、幸福感やこころの健康についての研究をもとにしています。</p></section>' +
       '<section class="card"><h2>1日のリズム</h2><ol class="timeline">' +
       '<li><b>朝 ' + esc(s.morningTime) + 'ごろ・2分</b><span>いまの気持ちと、今日大切にしたいことを思い浮かべる</span></li>' +
-      '<li><b>日中・いつでも</b><span>うれしかったこと、しんどかったことを「ひとこと」で</span></li>' +
+      '<li><b>日中・いつでも</b><span>うれしかったこと、しんどかったことを「ひとこと」で。午後は3分のストレッチも</span></li>' +
       '<li><b>夜 ' + esc(s.eveningTime) + 'ごろ・3分</b><span>よかったことを3つ。気がかりは書いて置いておく</span></li>' +
+      '<li><b>眠る前・4分</b><span>吐く息の長い呼吸で、からだをゆるめる</span></li>' +
       '<li><b>日曜・5分</b><span>1週間のよかったことを読み返す</span></li></ol>' +
       '<p class="muted small">全部やる必要はありません。夜のふりかえりだけでも十分です。</p></section>' +
       '<section class="card"><h2>書くこと と 気持ちを記録すること</h2>' +
@@ -1917,8 +2360,14 @@
       '<li>心に残った出来事は、何があって、どう感じたかを<b>物語のように</b>書くと整理されます。</li>' +
       '<li>同じ不安を何度も書くより、「何に気づいたか」まで進めると気持ちが沈みにくくなります。</li>' +
       '<li>しんどい記録が続くと、ホームに「こころのケア」をそっと提案します。</li></ul></section>' +
+      '<section class="card"><h2>からだから、ととのえる</h2>' +
+      '<p>こころとからだはつながっています。書く気持ちになれない日は、呼吸やストレッチから始めてみてください。</p>' +
+      '<ul class="plain-list"><li><b>呼吸</b>：吐く息を長くすると、からだが落ち着きやすくなります。しんどいときは「ため息の呼吸」を1分。</li>' +
+      '<li><b>マインドフルネス</b>：1分の小休止から、ボディスキャンや慈悲の瞑想まで。</li>' +
+      '<li><b>からだを動かす</b>：座ったままのストレッチや短い散歩でも、気分は上向きます。した運動を記録すると、動いた日の気分の違いが見えてきます。</li>' +
+      '<li>はじめる前と終わったあとに気分を選ぶと、何が自分に合っているかがわかります。</li></ul></section>' +
       '<h2 class="month-head">問いの種類</h2>' +
-      '<div class="guide-flows">' + ['morning', 'checkin', 'shutdown', 'reset', 'expressive', 'future', 'weekly'].map(flowRow).join('') + '</div>' +
+      '<div class="guide-flows">' + ['morning', 'checkin', 'shutdown', 'breath', 'mind', 'move', 'reset', 'expressive', 'future', 'weekly'].map(flowRow).join('') + '</div>' +
       '<h2 class="month-head">研究について</h2>' +
       '<div class="research-list">' + Object.values(RESEARCH).map((r) => '<details class="research"><summary>' + esc(r.title) + '</summary><p>' + esc(r.text) + '</p><cite>' + esc(r.ref) + '</cite></details>').join('') + '</div>' +
       '<p class="muted small">効果には個人差があります。つらい状態が続くときは、ひとりで抱えず、医療機関や専門の相談窓口を頼ってください。</p>' +
@@ -2023,6 +2472,11 @@
 
     document.addEventListener('keydown', (ev) => {
       if (document.body.classList.contains('locked') || !$('#modal').hidden) return;
+      if (state.view === 'practice' && state.practice && state.practice.phase === 'run') {
+        if (ev.key === ' ') { ev.preventDefault(); togglePause(); return; }
+        if (ev.key === 'Escape') { ev.preventDefault(); finishRun(); return; }
+        if (ev.key === 'Enter' && $('#stepNext') && !$('#stepNext').hidden) { ev.preventDefault(); manualNext(); return; }
+      }
       const mod = ev.ctrlKey || ev.metaKey;
       const k = ev.key.toLowerCase();
       if (mod && !ev.shiftKey && k === 'n') { ev.preventDefault(); writeNew(); }
@@ -2049,7 +2503,10 @@
       if (state.key && m && Date.now() - state.lastActivity > m * 60000) lock();
     }, 20000);
 
-    document.addEventListener('visibilitychange', () => { if (document.hidden && saveTimer) saveNow(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && saveTimer) saveNow();
+      if (!document.hidden && state.practice && state.practice.run && !state.practice.run.paused) keepAwake(true);
+    });
     window.addEventListener('beforeunload', (ev) => {
       if (saveTimer) { saveNow(); ev.preventDefault(); ev.returnValue = ''; }
     });
