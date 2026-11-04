@@ -169,7 +169,7 @@
   const FLOWS = {
     morning: {
       id: 'morning', name: '朝のひととき', short: '朝', icon: '🌅', minutes: 2, once: true, tags: [],
-      sub: '今日を、どう過ごしたい？',
+      sub: '今日をどう過ごしたいか',
       desc: '今の気持ちを確かめ、今日大切にしたいことと、ちょっとした楽しみを思い浮かべます。',
       research: ['intention', 'savoring', 'affect'],
       steps: [
@@ -181,7 +181,7 @@
     },
     checkin: {
       id: 'checkin', name: 'ひとこと', short: 'ひとこと', icon: '✏️', minutes: 1, tags: [],
-      sub: 'いまの気持ちや、小さな出来事を',
+      sub: 'いまの気持ちを、ひとことだけ',
       desc: 'うれしかったこと、しんどかったこと、ふと気づいたこと。いつでも1分で残せます。',
       research: ['savoring', 'affect'],
       steps: [
@@ -194,7 +194,7 @@
       desc: '今日のよかったことを3つ見つけ、気がかりは書いて置いておく。おだやかに一日を閉じます。',
       research: ['goodthings', 'kindness', 'offload', 'narrative'],
       steps: [
-        { key: 'good', type: 'list', label: '今日よかったこと', q: '今日よかったことを3つ', hint: '大きなことでなくて大丈夫。「なぜそうなったか」もひとこと添えると、効果が高まります。', placeholder: '例：同僚が手伝ってくれた（声をかけてみてよかった）\n例：夕焼けがきれいだった\n例：夕飯がおいしくできた', research: 'goodthings', suggest: 'todayGood' },
+        { key: 'good', type: 'list', slots: 3, label: '今日よかったこと', q: '今日よかったことを3つ', hint: '小さなことで大丈夫です。「なぜそうなったか」を添えると、より心に残ります。', examples: ['例：同僚が手伝ってくれた（声をかけてよかった）', '例：夕焼けがきれいだった', '例：夕飯がおいしくできた'], research: 'goodthings', suggest: 'todayGood' },
         { key: 'kindness', type: 'line', label: '親切', q: '今日、誰かにした親切・してもらった親切は？', placeholder: '例：電車で席をゆずった', research: 'kindness', optional: true },
         { key: 'story', type: 'text', label: '今日の出来事', q: '心に残っていることがあれば', hint: 'うれしかったことも、ひっかかったことも。何があって、どう感じたかを自由に。', research: 'narrative', optional: true },
         { key: 'letgo', type: 'list', label: '置いていくこと', q: '頭に残っている気がかりは？', hint: 'ここに書いたら、今夜はもう考えなくて大丈夫です。', placeholder: '例：明日、Aさんに返事をする', research: 'offload', optional: true },

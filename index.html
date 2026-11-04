@@ -39,9 +39,9 @@
 
   <!-- モバイル用トップバー -->
   <header class="topbar">
-    <button class="icon-btn" id="menuBtn" aria-label="メニュー">☰</button>
-    <div class="brand-sm">綴 <span>Tsuzuri</span></div>
-    <button class="icon-btn" id="topSearchBtn" aria-label="検索">🔍</button>
+    <button class="icon-btn" id="menuBtn" aria-label="メニュー"><span data-ic="menu"></span></button>
+    <div class="brand-sm">綴</div>
+    <button class="icon-btn" id="topSearchBtn" aria-label="検索"><span data-ic="search"></span></button>
   </header>
 
   <div class="app" id="app">
@@ -52,12 +52,12 @@
         <input id="searchInput" type="search" placeholder="検索…  (Ctrl+K)" aria-label="検索">
       </div>
       <nav class="nav" id="nav">
-        <button data-view="home"><span>🏠</span>ホーム</button>
-        <button data-view="list"><span>📖</span>記録</button>
-        <button data-view="calendar"><span>📅</span>カレンダー</button>
-        <button data-view="stats"><span>🌿</span>こころの傾向</button>
-        <button data-view="guide"><span>💡</span>ガイド</button>
-        <button data-view="settings"><span>⚙️</span>設定</button>
+        <button data-view="home"><span data-ic="home"></span>ホーム</button>
+        <button data-view="list"><span data-ic="journal"></span>記録</button>
+        <button data-view="calendar"><span data-ic="calendar"></span>カレンダー</button>
+        <button data-view="stats"><span data-ic="leaf"></span>こころの傾向</button>
+        <button data-view="guide"><span data-ic="guide"></span>ガイド</button>
+        <button data-view="settings"><span data-ic="settings"></span>設定</button>
       </nav>
       <div class="side-section" id="tagSection">
         <h4>タグ</h4>
@@ -70,11 +70,11 @@
   </div>
 
   <nav class="bottombar" id="bottombar" aria-label="メインナビゲーション">
-    <button data-view="home"><span>🏠</span>ホーム</button>
-    <button data-view="list"><span>📖</span>記録</button>
-    <button class="bb-add" id="bbAdd" aria-label="書く"><span>＋</span></button>
-    <button data-view="calendar"><span>📅</span>カレンダー</button>
-    <button data-view="stats"><span>🌿</span>傾向</button>
+    <button data-view="home"><span data-ic="home"></span>ホーム</button>
+    <button data-view="list"><span data-ic="journal"></span>記録</button>
+    <button class="bb-add" id="bbAdd" aria-label="書く"><span data-ic="plus"></span></button>
+    <button data-view="calendar"><span data-ic="calendar"></span>カレンダー</button>
+    <button data-view="stats"><span data-ic="leaf"></span>傾向</button>
   </nav>
 
   <div id="modal" class="modal" hidden></div>

@@ -984,3 +984,125 @@ button.hero-card:hover { transform: translateY(-1px); }
   .filters { flex-wrap: wrap; overflow: visible; margin: 0 0 16px; padding: 0; }
   .select-sm { font-size: 14px !important; }
 }
+
+/* =================================================================
+   v5: 専門家レビューによる仕上げ
+   ================================================================= */
+/* アイコン */
+.ic { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.nav button [data-ic], .nav button > span:first-child { width: 22px; display: grid; place-items: center; }
+.nav button .ic { width: 20px; height: 20px; }
+.icon-btn .ic { width: 22px; height: 22px; }
+.icon-btn.on { color: var(--mood-4); }
+.icon-btn.on .ic { fill: currentColor; }
+.bottombar button .ic { width: 24px; height: 24px; }
+.bottombar button span { filter: none !important; }
+.bottombar .bb-add .ic { width: 26px; height: 26px; stroke-width: 2; }
+.btn .ic { width: 18px; height: 18px; }
+.brand-sm { font-family: var(--font-serif); font-size: 1.3rem; }
+
+/* 日本語の改行を文節単位に */
+h1, h2, h3, .hc-text, .flow-q, .flow-hint, .note-card p, .memory-card p, .done-msg, .guide-intro p { word-break: auto-phrase; text-wrap: pretty; }
+h1, h2, .flow-q { text-wrap: balance; }
+
+/* ホーム：今日の流れ */
+.today-strip { display: flex; gap: 8px; margin: 12px 0 4px; flex-wrap: wrap; }
+.today-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; min-height: 40px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-weight: 600; font-size: .88rem; color: var(--text);
+}
+.today-pill span { font-size: 1.05rem; }
+.today-pill b { font-size: .75rem; background: var(--accent-soft); color: var(--accent-2); border-radius: 999px; padding: 0 7px; }
+.today-pill i { font-style: normal; color: var(--accent-2); font-weight: 800; }
+.today-pill.done { background: var(--accent-soft); border-color: transparent; color: var(--accent-2); }
+.today-pill.rec { display: none; }
+.today-pill:hover { border-color: var(--accent); }
+.memory-card {
+  width: 100%; text-align: left; border: 0; border-radius: 18px; padding: 18px 20px; color: var(--text);
+  background: color-mix(in srgb, var(--mood-4) 12%, var(--surface));
+  display: flex; flex-direction: column; gap: 4px;
+}
+.memory-card small { font-size: .75rem; font-weight: 700; color: color-mix(in srgb, var(--mood-4) 55%, var(--text)); }
+.memory-card p { margin: 0; font-family: var(--font-serif); font-size: 1.15rem; line-height: 1.6; }
+.memory-card span { font-size: .78rem; color: var(--muted); }
+
+/* 記録カード */
+.ec-kind { font-size: .9rem; margin-top: 4px; opacity: .85; }
+.ec-meta { font-variant-numeric: tabular-nums; }
+.ec-body h3 { font-weight: 600; }
+
+/* 読むページ */
+.view.read { max-width: 680px; padding-top: 16px; }
+.read-top { display: flex; align-items: center; gap: 4px; position: relative; margin-bottom: 18px; }
+.read-top .menu { top: 44px; }
+#rdEdit { gap: 4px; }
+.read-date { margin: 0; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.read-kind { margin: 2px 0 0; font-weight: 700; color: var(--accent-2); font-size: .9rem; }
+.read-title { font-family: var(--font-serif); font-weight: 600; font-size: 1.7rem; line-height: 1.45; margin: 8px 0 0; }
+.read-feel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 16px 0 4px; }
+.rf-mood { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; margin-right: 6px; }
+.rf-mood span { font-size: 1.6rem; }
+.rf-energy { font-size: .82rem; color: var(--muted); margin-left: 4px; }
+.read-feel .emo-chip { padding: 3px 10px; font-size: .8rem; cursor: default; }
+.read-body { margin-top: 22px; font-size: var(--editor-size); line-height: 2; }
+.read-body h3 { font-size: .82rem; color: var(--muted); font-family: var(--font-sans); letter-spacing: .05em; margin: 1.8em 0 .3em; }
+.read-body h3:first-child { margin-top: 0; }
+.read-body ul { padding-left: 1.2em; }
+.read-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 22px; }
+.support {
+  margin-top: 20px; padding: 14px 16px; border-radius: 14px; font-size: .88rem;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.support p { margin: 4px 0; color: var(--muted); }
+.support ul { margin: 6px 0 0; padding-left: 1.1em; }
+.support li { margin: 3px 0; }
+.note-card .support { margin-top: 4px; width: 100%; }
+
+/* エディタ */
+.ed-top { gap: 2px; }
+.date-input {
+  border: 0; background: transparent; color: var(--muted); font-size: .9rem; padding: 6px 4px; min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.date-input:focus { outline: 2px solid var(--accent-soft); border-radius: 8px; }
+#edDone { margin-left: 4px; }
+.ed-kind { margin: 2px 0 12px; }
+.fmt-toggle { display: none; }
+.fmt-group { display: contents; }
+@media (max-width: 760px) {
+  .fmt-toggle { display: inline-grid; place-items: center; }
+  .fmt-group { display: none; }
+  .toolbar.open .fmt-group { display: flex; flex-wrap: wrap; flex-basis: 100%; order: 9; gap: 2px; }
+  .toolbar.open .fmt-toggle { color: var(--accent-2); background: var(--accent-soft); }
+  .desktop-only { display: none !important; }
+  .read-title { font-size: 1.45rem; }
+  .ed-status { font-size: .7rem; max-width: 72px; }
+}
+
+/* 「3つ」の入力欄 */
+.slots { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.slots li { display: flex; align-items: center; gap: 10px; }
+.slot-n {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-2); font-weight: 800; font-size: .85rem;
+}
+.slot { font-size: 1rem; padding: 12px 14px; }
+.slot::placeholder { color: color-mix(in srgb, var(--muted) 65%, transparent); }
+
+/* カレンダー */
+.cal-cell.future { background: transparent; border-style: dashed; color: var(--muted); }
+.cal-cell { border-color: transparent; }
+.cal-cell:not(.future):not(.has) { background: var(--surface); }
+
+/* アクセシビリティ */
+button, .today-pill, .qtype, .emo-chip { -webkit-tap-highlight-color: transparent; }
+.emo-chip { min-height: 36px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+.toolbar .fmt-group button, .toolbar .fmt-toggle {
+  border: 0; background: transparent; min-width: 34px; height: 34px; border-radius: 8px; padding: 0 9px; font-size: .88rem; color: var(--muted);
+}
+.toolbar .fmt-group button:hover, .toolbar .fmt-toggle:hover { background: var(--surface-2); color: var(--text); }
+.support a { color: var(--accent-2); font-weight: 700; white-space: nowrap; }

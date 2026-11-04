@@ -129,6 +129,29 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
 
+
+  /* ================= アイコン（線画SVG） ================= */
+  const ICONS = {
+    home: '<path d="M3.5 10.5 12 3.5l8.5 7V19a1.5 1.5 0 0 1-1.5 1.5h-4v-6h-6v6H5A1.5 1.5 0 0 1 3.5 19z"/>',
+    journal: '<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8h6M9 12h6M9 16h3.5"/>',
+    calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    leaf: '<path d="M5 19.5C5 11 10 5 20 4.5 19.5 14.5 14 19.5 5.5 19.5"/><path d="M5 19.5 12.5 12"/>',
+    guide: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/>',
+    settings: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h10"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    back: '<path d="M14.5 5.5 8 12l6.5 6.5"/>',
+    close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+    more: '<circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/>',
+    star: '<path d="m12 3.8 2.5 5.1 5.6.8-4 3.9 1 5.6-5.1-2.6-5 2.6.9-5.6-4-3.9 5.6-.8z"/>',
+    edit: '<path d="M4.5 19.5h3.8L19 8.8 15.2 5 4.5 15.7z"/><path d="m13.5 6.7 3.8 3.8"/>',
+    expand: '<path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/>',
+    text: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
+  };
+  function ic(name) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
+  function hydrateIcons(root = document) { $$('[data-ic]', root).forEach((el) => { el.innerHTML = ic(el.dataset.ic); }); }
+
   /* ================= データ層 ================= */
   function normalize(e) {
     return {
@@ -287,21 +310,25 @@
       state.flow = null;
     }
     if (view === 'editor' && state.view !== 'editor') state.prevView = state.view;
+    if (view === 'read' && state.view !== 'editor' && state.view !== 'read') state.readFrom = state.view;
     await leaveEditor();
     document.body.classList.remove('focus-mode', 'nav-open');
     state.view = view;
-    if (view === 'editor') state.currentId = opts.id;
+    if ((view === 'editor' || view === 'read') && opts.id) state.currentId = opts.id;
     $$('#nav button, #bottombar button[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
     document.body.dataset.view = view;
     const main = $('#main');
     main.scrollTop = 0;
     window.scrollTo(0, 0);
-    ({ home: renderHome, list: renderList, calendar: renderCalendar, stats: renderStats, settings: renderSettings, editor: renderEditor, flow: renderFlow, guide: renderGuide })[view]();
+    ({ home: renderHome, list: renderList, calendar: renderCalendar, stats: renderStats, settings: renderSettings, editor: renderEditor, read: renderRead, flow: renderFlow, guide: renderGuide })[view]();
     renderSidebar();
     if (opts.focus !== false && view !== 'editor') main.focus({ preventScroll: true });
   }
 
-  function openEntry(id) { go('editor', { id }); }
+  function openEntry(id) {
+    const e = state.entries.get(id);
+    go(e && !isEmpty(e) ? 'read' : 'editor', { id });
+  }
 
   function writeNew(date = todayStr(), init = {}) {
     const e = newEntry(date, init);
@@ -316,9 +343,8 @@
         '<button class="tag-chip' + (state.view === 'list' && state.filter.tag === t ? ' active' : '') + '" data-tag="' + esc(t) + '">#' + esc(t) + '<span>' + n + '</span></button>').join('')
       : '';
     $('#tagSection').hidden = !tags.length;
-    const st = computeStreaks();
     $('#sideFoot').innerHTML =
-      '<div class="muted small">' + (st.current > 1 ? st.current + '日つづいています · ' : '') + state.entries.size + '件' + (state.key ? ' · 🔒' : '') + '</div>';
+      '<div class="muted small">' + state.entries.size + '件の記録' + (state.key ? ' · 🔒 保護中' : '') + '</div>';
   }
 
   /* ================= ホーム ================= */
@@ -334,10 +360,10 @@
     const mood = moodOf(e.mood);
     const title = e.title || MD.plain(e.body).slice(0, 40) || '（無題）';
     return '<article class="entry-card" data-id="' + esc(e.id) + '" tabindex="0">' +
-      '<div class="ec-side"><div class="ec-day">' + parseDate(e.date).getDate() + '</div><div class="ec-wd">' + WEEK[parseDate(e.date).getDay()] + '</div></div>' +
+      '<div class="ec-side"><div class="ec-day">' + parseDate(e.date).getDate() + '</div><div class="ec-wd">' + WEEK[parseDate(e.date).getDay()] + '</div>' + (FLOWS[e.kind] ? '<div class="ec-kind" title="' + esc(FLOWS[e.kind].name) + '">' + FLOWS[e.kind].icon + '</div>' : '') + '</div>' +
       '<div class="ec-body">' +
-      '<div class="ec-meta">' + (e.date === todayStr() ? '' : fmtDate(e.date, parseDate(e.date).getFullYear() !== new Date().getFullYear()) + ' · ') + fmtTime(e.createdAt) + (e.favorite ? ' · <span class="star">★</span>' : '') + '</div>' +
-      '<h3>' + (e.kind !== 'free' ? '<span class="kind-badge kind-' + e.kind + '">' + KIND_LABEL(e.kind) + '</span>' : '') + highlight(title, terms) + '</h3>' +
+      '<div class="ec-meta">' + fmtTime(e.createdAt) + (e.favorite ? ' <span class="star">★</span>' : '') + '</div>' +
+      '<h3>' + highlight(title, terms) + '</h3>' +
       (e.kind === 'checkin' ? '' : '<p>' + highlight(excerpt(e, terms), terms) + '</p>') +
       (e.tags.length || e.emotions.length ? '<div class="ec-tags">' + e.emotions.slice(0, 3).map((w) => '<span class="ec-emo emo-' + emoGroup(w) + '">' + esc(w) + '</span>').join('') + e.tags.map((t) => '<span>#' + esc(t) + '</span>').join('') + '</div>' : '') +
       '</div>' +
@@ -356,41 +382,48 @@
     const today = todayStr();
     const all = sorted();
     const todays = all.filter((e) => e.date === today);
-    const st = computeStreaks();
     const rec = recommendedFlow();
     const morning = ofKind('morning', today)[0];
     const night = ofKind('shutdown', today)[0];
     const moments = ofKind('checkin', today);
     const intention = morning && morning.data ? morning.data.intention || morning.data.mit : '';
     const lookforward = morning && morning.data ? morning.data.lookforward : '';
-    const goods = goodBetween(addDays(today, -13), today).slice(0, 6);
+    const seen = new Set();
+    const goods = goodBetween(addDays(today, -6), today).filter((g) => !seen.has(g.text) && seen.add(g.text)).slice(0, 3);
+    // 1週間以上前の「よかったこと」をひとつ思い出す（日替わり）
+    const olderGoods = goodBetween('0000-01-01', addDays(today, -7)).filter((g) => !seen.has(g.text));
+    const memoryGood = olderGoods.length ? olderGoods[dayOfYear(new Date()) % olderGoods.length] : null;
+    const monthDays = new Set(all.filter((e) => e.date.startsWith(today.slice(0, 7))).map((e) => e.date)).size;
+    const lowDays = [1, 2, 3].filter((i) => { const ms = all.filter((e) => e.date === addDays(today, -i) && e.mood).map((e) => e.mood); return ms.length && avg(ms) <= 2; }).length;
     const care = state.careDismissed === today ? null : careSignal();
     const md = today.slice(5);
     const memory = all.find((e) => e.date < today && e.date.slice(5) === md) || all.find((e) => e.date === addDays(today, -30) && e.kind !== 'checkin');
     const f = rec ? FLOWS[rec] : null;
 
-    const rhythm = (id, done, sub) => '<button class="rhythm' + (done ? ' done' : '') + '" data-flow="' + id + '"><span class="r-icon">' + FLOWS[id].icon + '</span><span class="r-name">' + FLOWS[id].short + '</span><span class="r-sub">' + sub + '</span></button>';
+    const pill = (id, done, label) => '<button class="today-pill' + (done ? ' done' : '') + (rec === id ? ' rec' : '') + '" data-flow="' + id + '"><span>' + FLOWS[id].icon + '</span>' + label + (done ? '<i aria-label="済み">✓</i>' : '') + '</button>';
 
     $('#main').innerHTML =
       '<div class="view home">' +
       '<header class="home-head"><p class="eyebrow">' + fmtDate(today) + '</p><h1>' + greeting() + '</h1></header>' +
 
       (care ? '<section class="note-card care"><p><b>少ししんどい日みたいですね。</b><br>気持ちに名前をつけて、自分にやさしい言葉をかけてみませんか。</p>' +
-        '<div class="row gap wrap"><button class="btn primary small" data-flow="reset">🫧 こころのケア</button><button class="btn ghost small" id="careDismiss">あとで</button></div></section>' : '') +
+        '<div class="row gap wrap"><button class="btn primary small" data-flow="reset">🫧 こころのケア</button><button class="btn ghost small" id="careDismiss">あとで</button></div>' +
+        (lowDays >= 3 ? supportHtml() : '') + '</section>' : '') +
 
       (f ? '<button class="hero-card" data-flow="' + f.id + '"><span class="hc-icon">' + f.icon + '</span><span class="hc-text"><small>いまのおすすめ・' + f.minutes + '分</small><b>' + esc(f.name) + '</b><span>' + esc(f.sub) + '</span></span><span class="hc-go" aria-hidden="true">→</span></button>'
         : '<div class="hero-card calm"><span class="hc-icon">🌿</span><span class="hc-text"><b>今日の記録はそろいました</b><span>ゆっくり休んでくださいね。</span></span></div>') +
 
-      '<div class="rhythm-row">' +
-      rhythm('morning', !!morning, morning ? '済み' : '2分') +
-      rhythm('checkin', false, moments.length ? moments.length + '回' : 'いつでも') +
-      rhythm('shutdown', !!night, night ? '済み' : '3分') +
+      '<div class="today-strip" aria-label="今日の記録">' +
+      pill('morning', !!morning, '朝') +
+      pill('checkin', false, 'ひとこと' + (moments.length ? '<b>' + moments.length + '</b>' : '')) +
+      pill('shutdown', !!night, '夜') +
       '</div>' +
 
       (intention ? '<section class="note-card intention"><small>今日大切にしたいこと</small><p>' + esc(intention) + '</p>' + (lookforward ? '<small>楽しみ</small><p>' + esc(lookforward) + '</p>' : '') + '</section>' : '') +
 
-      (goods.length ? '<section class="section"><h2 class="section-title">最近のよかったこと</h2><ul class="good-list">' +
+      (goods.length ? '<section class="section"><h2 class="section-title">この1週間のよかったこと</h2><ul class="good-list">' +
         goods.map((g) => '<li><button data-id="' + esc(g.id) + '"><span>' + esc(g.text) + '</span><small>' + relDays(g.date) + '</small></button></li>').join('') + '</ul></section>' : '') +
+      (memoryGood ? '<section class="section"><button class="memory-card" data-id="' + esc(memoryGood.id) + '"><small>' + relDays(memoryGood.date) + 'のよかったこと</small><p>' + esc(memoryGood.text) + '</p><span>思い出すと、もう一度その気持ちを味わえます</span></button></section>' : '') +
 
       (todays.length ? '<section class="section"><h2 class="section-title">今日の記録</h2><div class="cards">' + todays.map((e) => entryCard(e)).join('') + '</div></section>' : '') +
 
@@ -404,14 +437,14 @@
 
       (backupDue() ? '<section class="note-card"><p>記録はこの端末だけに保存されています。ときどきバックアップしておくと安心です。</p><button class="btn small" data-goto="settings">バックアップする</button></section>' : '') +
 
-      (st.current > 1 ? '<p class="streak-line">' + st.current + '日つづいています</p>' : '') +
+      (monthDays ? '<p class="streak-line">今月は ' + monthDays + ' 日、書きました</p>' : '') +
       '</div>';
 
     const main = $('#main');
     bindCards(main);
     $$('[data-flow]', main).forEach((b) => (b.onclick = () => startFlow(b.dataset.flow)));
     $$('[data-goto]', main).forEach((b) => (b.onclick = () => go(b.dataset.goto)));
-    $$('.good-list button', main).forEach((b) => (b.onclick = () => openEntry(b.dataset.id)));
+    $$('.good-list button, .memory-card', main).forEach((b) => (b.onclick = () => openEntry(b.dataset.id)));
     const cd = $('#careDismiss'); if (cd) cd.onclick = () => { state.careDismissed = todayStr(); renderHome(); };
   }
 
@@ -490,6 +523,7 @@
       if (es.length) cls.push('has');
       if (avg) cls.push('mood-bg-' + avg);
       if (ds === today) cls.push('today');
+      if (ds > today) cls.push('future');
       if (ds === state.calSelected) cls.push('selected');
       cells += '<button class="' + cls.join(' ') + '" data-date="' + ds + '">' +
         '<span class="cal-num">' + d + '</span>' +
@@ -507,7 +541,7 @@
       '<div class="row gap"><button class="btn icon" id="calPrev" aria-label="前の月">‹</button><button class="btn" id="calToday">今月</button><button class="btn icon" id="calNext" aria-label="次の月">›</button></div></header>' +
       '<p class="muted small">この月の記録: ' + monthEntries + '件' + (moodN ? ' · 平均の気分 ' + moodOf(Math.round(moodSum / moodN)).e + ' ' + (moodSum / moodN).toFixed(1) : '') + '</p>' +
       '<div class="cal-grid">' + heads.map((h) => '<div class="cal-head">' + h + '</div>').join('') + cells + '</div>' +
-      '<section class="section"><div class="section-head"><h2>' + fmtDate(sel) + '</h2><button class="btn small primary" id="calWrite">＋ この日に書く</button></div>' +
+      '<section class="section"><div class="section-head"><h2>' + fmtDate(sel) + '</h2>' + (sel <= today ? '<button class="btn small" id="calWrite">＋ この日に書く</button>' : '') + '</div>' +
       (selEntries.length ? '<div class="cards">' + selEntries.map((e) => entryCard(e)).join('') + '</div>' : '<p class="muted">この日の記録はありません。</p>') +
       '</section></div>';
 
@@ -522,7 +556,7 @@
         if (es.length) openEntry(es[0].id); else writeNew(c.dataset.date);
       };
     });
-    $('#calWrite').onclick = () => writeNew(sel);
+    const cw = $('#calWrite'); if (cw) cw.onclick = () => writeNew(sel);
     bindCards(main);
   }
 
@@ -704,7 +738,7 @@
       '<label class="btn">読み込み…<input type="file" id="importFile" accept=".json,application/json" hidden></label>' +
       '</div></section>' +
 
-      '<section class="card"><h2>キーボードショートカット</h2><table class="shortcuts">' +
+      '<section class="card desktop-only"><h2>キーボードショートカット</h2><table class="shortcuts">' +
       [['Ctrl/⌘ + J', 'ひとこと'], ['Ctrl/⌘ + Shift + N', '書くものを選ぶ'], ['Ctrl/⌘ + N', '白紙に自由に書く'], ['Ctrl/⌘ + K', '検索'], ['Ctrl/⌘ + S', '今すぐ保存'], ['Ctrl/⌘ + E', 'プレビュー切替'], ['Ctrl/⌘ + B / I', '太字 / 斜体'],
         ['Ctrl/⌘ + Shift + F', '集中モード'], ['Ctrl/⌘ + Shift + L', 'ロック（暗号化時）'], ['Esc', '集中モード終了 / 閉じる']]
         .map(([k, v]) => '<tr><td><kbd>' + k + '</kbd></td><td>' + v + '</td></tr>').join('') +
@@ -915,6 +949,89 @@
     startApp();
   }
 
+
+  /* ================= 読むページ ================= */
+  /** 誘導付きの記録から、上部に表示する「気持ち」の行を除いた本文 */
+  function readableBody(e) {
+    const f = FLOWS[e.kind];
+    let b = e.body;
+    if (f) {
+      for (const st of f.steps) {
+        if (st.type === 'state') b = b.replace(new RegExp('### ' + regexEscape(st.label) + '\\n[^\\n]*\\n?', 'g'), '');
+      }
+      const q = e.kind === 'checkin' && e.data && e.data.quick;
+      if (q) { const sl = stateLine(q); if (sl && b.endsWith(sl)) b = b.slice(0, -sl.length); }
+    }
+    return b.trim();
+  }
+
+  function renderRead() {
+    const e = current();
+    if (!e) return go('home');
+    const f = FLOWS[e.kind];
+    const mood = moodOf(e.mood);
+    const body = readableBody(e);
+    const showTitle = e.title && !(f && e.title === f.name);
+    $('#main').innerHTML =
+      '<div class="view read">' +
+      '<div class="read-top">' +
+      '<button class="icon-btn" id="rdBack" aria-label="戻る">' + ic('back') + '</button>' +
+      '<span class="spacer"></span>' +
+      '<button class="icon-btn' + (e.favorite ? ' on' : '') + '" id="rdFav" aria-label="お気に入り">' + ic('star') + '</button>' +
+      '<button class="icon-btn" id="rdMore" aria-label="その他">' + ic('more') + '</button>' +
+      '<button class="btn small" id="rdEdit">' + ic('edit') + '<span>編集</span></button>' +
+      '<div class="menu" id="rdMenu" hidden>' +
+      '<button data-act="copy">テキストをコピー</button>' +
+      '<button data-act="export">この記録を書き出す</button>' +
+      '<button data-act="delete" class="danger-text">削除</button>' +
+      '</div></div>' +
+      '<p class="read-date">' + fmtDate(e.date) + '　' + fmtTime(e.createdAt) + '</p>' +
+      (f ? '<p class="read-kind">' + f.icon + ' ' + esc(f.name) + '</p>' : '') +
+      (showTitle ? '<h1 class="read-title">' + esc(e.title) + '</h1>' : '') +
+      (mood || e.emotions.length || e.energy ? '<div class="read-feel">' +
+        (mood ? '<span class="rf-mood"><span>' + mood.e + '</span>' + mood.l + '</span>' : '') +
+        e.emotions.map((w) => '<span class="emo-chip on emo-' + emoGroup(w) + '">' + esc(w) + '</span>').join('') +
+        (e.energy ? '<span class="rf-energy">元気さ・' + energyOf(e.energy).l + '</span>' : '') + '</div>' : '') +
+      '<article class="prose read-body" id="rdBody">' + (body ? MD.render(body) : '<p class="muted">本文はありません。</p>') + '</article>' +
+      (e.tags.length ? '<div class="read-tags">' + e.tags.map((t) => '<button class="tag-chip" data-tag="' + esc(t) + '">#' + esc(t) + '</button>').join('') + '</div>' : '') +
+      (e.kind === 'reset' ? supportHtml() : '') +
+      '</div>';
+    const main = $('#main');
+    $('#rdBack').onclick = () => go(state.readFrom || 'home');
+    $('#rdEdit').onclick = () => go('editor', { id: e.id });
+    $('#rdFav').onclick = async (ev) => {
+      e.favorite = !e.favorite; ev.currentTarget.classList.toggle('on', e.favorite);
+      e.updatedAt = Date.now(); await persist(e);
+      toast(e.favorite ? 'お気に入りにしました' : 'お気に入りを外しました');
+    };
+    const menu = $('#rdMenu');
+    $('#rdMore').onclick = (ev) => { ev.stopPropagation(); menu.hidden = !menu.hidden; };
+    $$('button', menu).forEach((b) => (b.onclick = () => { menu.hidden = true; entryAction(b.dataset.act); }));
+    $$('.read-tags [data-tag]', main).forEach((b) => (b.onclick = () => { state.filter.tag = b.dataset.tag; go('list'); }));
+    if (!f) {
+      $('#rdBody').addEventListener('click', async (ev) => {
+        const cb = ev.target.closest('input[type=checkbox][data-line]');
+        if (!cb) return;
+        const lines = e.body.split('\n');
+        const n = +cb.dataset.line;
+        if (lines[n] == null) return;
+        lines[n] = lines[n].replace(/\[( |x|X)\]/, (m, c) => (c === ' ' ? '[x]' : '[ ]'));
+        e.body = lines.join('\n'); e.updatedAt = Date.now();
+        await persist(e);
+        cb.closest('li').classList.toggle('done', cb.checked);
+      });
+    } else {
+      $$('input[type=checkbox]', $('#rdBody')).forEach((c) => (c.disabled = true));
+    }
+  }
+
+  function supportHtml() {
+    return '<aside class="support"><b>ひとりで抱えきれないときは</b>' +
+      '<p>話を聞いてもらえる窓口があります。</p>' +
+      '<ul><li>よりそいホットライン <a href="tel:0120279338">0120-279-338</a>（24時間・無料）</li>' +
+      '<li>こころの健康相談統一ダイヤル <a href="tel:0570064556">0570-064-556</a></li></ul></aside>';
+  }
+
   /* ================= エディタ ================= */
   let saveTimer = null;
 
@@ -952,29 +1069,30 @@
     const e = current();
     if (!e) return go('home');
     const s = state.settings;
-    const mode = s.editorMode;
+    const mode = s.editorMode = window.matchMedia('(min-width: 1100px)').matches && s.editorMode === 'split' ? 'split' : 'write';
     const existingTags = allTags().map(([t]) => t);
 
     $('#main').innerHTML =
       '<div class="view editor">' +
       '<div class="ed-top">' +
-      '<button class="btn ghost small" id="edBack">← 戻る</button>' +
-      '<input type="date" class="input date-input" id="edDate" value="' + e.date + '" aria-label="日付">' +
+      '<button class="icon-btn" id="edBack" aria-label="戻る">' + ic('back') + '</button>' +
+      '<input type="date" class="date-input" id="edDate" value="' + e.date + '" aria-label="日付">' +
       '<span class="ed-status" id="edStatus"></span>' +
       '<span class="spacer"></span>' +
-      '<button class="icon-btn' + (e.favorite ? ' on' : '') + '" id="edFav" title="お気に入り">' + (e.favorite ? '★' : '☆') + '</button>' +
-      '<button class="icon-btn" id="edFocus" title="集中モード (Ctrl+Shift+F)">⛶</button>' +
-      '<button class="icon-btn" id="edMore" title="その他">⋯</button>' +
+      '<button class="icon-btn' + (e.favorite ? ' on' : '') + '" id="edFav" aria-label="お気に入り">' + ic('star') + '</button>' +
+      '<button class="icon-btn desktop-only" id="edFocus" aria-label="集中モード" title="集中モード (Ctrl+Shift+F)">' + ic('expand') + '</button>' +
+      '<button class="icon-btn" id="edMore" aria-label="その他">' + ic('more') + '</button>' +
+      '<button class="btn small primary" id="edDone">完了</button>' +
       '<div class="menu" id="edMenu" hidden>' +
-      '<button data-act="duplicate">📄 複製</button>' +
-      '<button data-act="copy">📋 Markdown をコピー</button>' +
-      '<button data-act="export">⬇️ この記録を書き出し</button>' +
-      '<button data-act="print">🖨️ 印刷</button>' +
-      '<button data-act="delete" class="danger-text">🗑️ 削除</button>' +
+      '<button data-act="focus">集中モード</button>' +
+      '<button data-act="duplicate">複製する</button>' +
+      '<button data-act="copy">テキストをコピー</button>' +
+      '<button data-act="export">この記録を書き出す</button>' +
+      '<button data-act="delete" class="danger-text">削除</button>' +
       '</div>' +
       '</div>' +
       '<input class="title-input" id="edTitle" placeholder="タイトル（任意）" value="' + esc(e.title) + '" maxlength="200">' +
-      (e.kind !== 'free' || e.energy || e.emotions.length ? '<div class="ed-kind">' + [e.kind !== 'free' ? '<span class="kind-badge kind-' + e.kind + '">' + FLOWS[e.kind].icon + ' ' + esc(FLOWS[e.kind].name) + '</span>' : '', e.energy ? '元気さ ' + energyOf(e.energy).l : '', e.emotions.length ? esc(e.emotions.join('、')) : ''].filter(Boolean).join(' · ') + '</div>' : '') +
+      (e.energy || e.emotions.length ? '<div class="ed-kind">' + [e.emotions.length ? esc(e.emotions.join('・')) : '', e.energy ? '元気さ ' + energyOf(e.energy).l : ''].filter(Boolean).join('　') + '</div>' : '') +
       '<div class="ed-meta">' +
       '<div class="mood-picker" role="radiogroup" aria-label="気分">' +
       MOODS.map((m) => '<button class="mood-btn mood-' + m.v + (e.mood === m.v ? ' on' : '') + '" data-mood="' + m.v + '" role="radio" aria-checked="' + (e.mood === m.v) + '" title="' + m.l + '">' + m.e + '</button>').join('') +
@@ -984,21 +1102,19 @@
       existingTags.map((t) => '<option value="' + esc(t) + '">').join('') + '</datalist></div>' +
       '</div>' +
       '<div class="toolbar" id="toolbar">' +
+      '<button class="fmt-toggle" id="fmtToggle" aria-label="文字の装飾" aria-expanded="false">' + ic('text') + '</button>' +
+      '<span class="fmt-group">' +
       '<button data-fmt="bold" title="太字 (Ctrl+B)"><b>B</b></button>' +
       '<button data-fmt="italic" title="斜体 (Ctrl+I)"><i>I</i></button>' +
-      '<span class="sep"></span>' +
-      '<button data-fmt="h2" title="見出し">H</button>' +
-      '<button data-fmt="ul" title="箇条書き">•</button>' +
+      '<button data-fmt="h2" title="見出し">見出し</button>' +
+      '<button data-fmt="ul" title="箇条書き">・リスト</button>' +
       '<button data-fmt="task" title="チェックリスト">☑</button>' +
-      '<button data-fmt="quote" title="引用">❝</button>' +
+      '<button data-fmt="quote" title="引用">引用</button>' +
+      '</span>' +
       '<span class="sep"></span>' +
       '<div class="dropdown"><button id="tplBtn" title="テンプレート">テンプレート</button><div class="menu" id="tplMenu" hidden>' +
       TEMPLATES.map((t) => '<button data-tpl="' + t.id + '">' + t.icon + ' ' + esc(t.name) + '</button>').join('') + '</div></div>' +
       '<button id="promptBtn" title="問いを入れる">問いをもらう</button>' +
-      '<span class="spacer"></span>' +
-      '<div class="seg" id="modeSeg">' +
-      ['write:書く', 'split:並べる', 'preview:見る'].map((x) => { const [k, l] = x.split(':'); return '<button data-mode="' + k + '"' + (mode === k ? ' class="on"' : '') + '>' + l + '</button>'; }).join('') +
-      '</div>' +
       '</div>' +
       '<div class="ed-body mode-' + mode + '" id="edBody">' +
       '<textarea id="edText" class="ed-text" placeholder="思いつくままに、自由に書いてください" spellcheck="' + (s.spellcheck ? 'true' : 'false') + '"></textarea>' +
@@ -1019,12 +1135,13 @@
     if (!isEmpty(e)) setStatus('保存済み', 'saved');
 
     $('#edBack').onclick = () => go(state.prevView || 'home');
+    $('#edDone').onclick = async () => { await saveNow(); if (isEmpty(e)) return go(state.prevView || 'home'); go('read', { id: e.id }); };
+    $('#fmtToggle').onclick = (ev) => { const t = $('#toolbar'); const o = t.classList.toggle('open'); ev.currentTarget.setAttribute('aria-expanded', o); };
     $('#edDate').onchange = (ev) => { if (ev.target.value) { e.date = ev.target.value; scheduleSave(); } };
     $('#edTitle').oninput = (ev) => { e.title = ev.target.value; scheduleSave(); };
     $('#edTitle').onkeydown = (ev) => { if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); ta.focus(); } };
     $('#edFav').onclick = (ev) => {
       e.favorite = !e.favorite;
-      ev.currentTarget.textContent = e.favorite ? '★' : '☆';
       ev.currentTarget.classList.toggle('on', e.favorite);
       scheduleSave();
     };
@@ -1276,6 +1393,7 @@
   async function entryAction(act) {
     const e = current();
     if (!e) return;
+    if (act === 'focus') return toggleFocus();
     if (act === 'delete') {
       const ok = await ask({ title: 'この記録を削除しますか？', message: fmtDate(e.date) + (e.title ? '「' + e.title + '」' : '') + '\nこの操作は元に戻せません。', ok: '削除', danger: true });
       if (!ok) return;
@@ -1284,12 +1402,12 @@
       await DB.remove(e.id);
       state.currentId = null;
       toast('削除しました');
-      go(state.prevView || 'home');
+      go(state.readFrom || state.prevView || 'home');
     } else if (act === 'duplicate') {
       await saveNow();
       const copy = newEntry(todayStr(), { title: e.title ? e.title + '（コピー）' : '', body: e.body, tags: e.tags.slice(), mood: e.mood });
       await persist(copy);
-      openEntry(copy.id);
+      go('editor', { id: copy.id });
       toast('複製しました');
     } else if (act === 'copy') {
       try { await navigator.clipboard.writeText((e.title ? '# ' + e.title + '\n\n' : '') + e.body); toast('コピーしました'); }
@@ -1410,7 +1528,7 @@
   function whyHtml(key) {
     const r = RESEARCH[key];
     if (!r) return '';
-    return '<details class="why"><summary>🔬 なぜ効くの？</summary><b>' + esc(r.title) + '</b><p>' + esc(r.text) + '</p><cite>' + esc(r.ref) + '</cite></details>';
+    return '<details class="why"><summary>この問いについて</summary><b>' + esc(r.title) + '</b><p>' + esc(r.text) + '</p><cite>' + esc(r.ref) + '</cite></details>';
   }
 
   function stateWidget(v) {
@@ -1498,6 +1616,11 @@
         '<details class="more-state"' + (v.mood || v.energy || (v.emotions || []).length ? ' open' : '') + '><summary>気分も残す</summary>' + stateWidget(v) + '</details>';
     } else if (st.type === 'line') {
       w = '<input class="input fw-input" id="fwInput" placeholder="' + esc(st.placeholder || '') + '" value="' + esc(a[st.key] || '') + '" enterkeyhint="next">';
+    } else if (st.type === 'list' && st.slots) {
+      const vals = String(a[st.key] || '').split('\n');
+      const n = Math.max(st.slots, vals.filter(Boolean).length + (vals.filter(Boolean).length >= st.slots ? 1 : 0), fl.extraSlots || 0);
+      w = '<ol class="slots">' + Array.from({ length: n }, (_, i) => '<li><span class="slot-n">' + (i + 1) + '</span><input class="input slot" data-slot="' + i + '" value="' + esc(vals[i] || '') + '" placeholder="' + esc((st.examples || [])[i] || '') + '" enterkeyhint="next"></li>').join('') + '</ol>' +
+        '<button type="button" class="btn ghost small" id="addSlot">＋ もうひとつ</button>';
     } else if (st.type === 'text' || st.type === 'list') {
       w = '<textarea class="input fw-text' + (st.tall ? ' tall' : '') + '" id="fwInput" rows="' + (st.type === 'list' ? 4 : 6) + '" placeholder="' + esc(st.placeholder || '') + '">' + esc(a[st.key] || '') + '</textarea>' +
         (st.type === 'list' ? '<p class="muted small">1行に1つずつ</p>' : '');
@@ -1562,6 +1685,20 @@
       };
     }
     if (st.type === 'timer') bindTimer(fl.timer);
+    if (st.slots) {
+      const slots = $$('.slot', main);
+      const sync = () => { a[st.key] = slots.map((x) => x.value.trim()).join('\n').replace(/\n+$/, ''); markDirty(); };
+      slots.forEach((x, i) => {
+        x.oninput = sync;
+        x.onkeydown = (ev) => {
+          if (ev.key !== 'Enter' || ev.isComposing || ev.keyCode === 229) return;
+          ev.preventDefault();
+          if (slots[i + 1]) slots[i + 1].focus(); else $('#flowNext').click();
+        };
+      });
+      $('#addSlot').onclick = () => { fl.extraSlots = slots.length + 1; renderFlow(); const all = $$('.slot'); all[all.length - 1].focus(); };
+      if (window.matchMedia('(min-width: 761px)').matches) { const firstEmpty = slots.find((x) => !x.value) || slots[0]; firstEmpty.focus(); }
+    }
 
     const sg = $('.suggest', main);
     if (sg) sg.onclick = () => {
@@ -1694,7 +1831,7 @@
     fl.savedId = e.id;
     if (f.id === 'checkin') {
       state.flow = null;
-      toast(qtOf((data.quick || {}).type).v === 'good' ? '残しました。いい瞬間でしたね' : '残しました');
+      toast(qtOf((data.quick || {}).type).v === 'good' ? 'いい瞬間ですね' : '残しました');
       return go('home');
     }
     fl.step = f.steps.length;
@@ -1707,12 +1844,13 @@
     const f = FLOWS[fl.id];
     const e = state.entries.get(fl.savedId);
     const msg = f.done || f.icon + ' ' + f.name + 'を残しました。';
-    const st = computeStreaks();
+    const monthN = new Set(sorted().filter((x) => x.date.startsWith(todayStr().slice(0, 7))).map((x) => x.date)).size;
     $('#main').innerHTML =
       '<div class="view flow flow-done flow-' + f.id + '">' +
       '<div class="done-hero"><p class="done-msg">' + esc(msg).replace(/\n/g, '<br>') + '</p>' +
-      (st.current > 1 ? '<p class="muted small">' + st.current + '日つづいています</p>' : '') + '</div>' +
-      (e ? '<div class="card prose done-summary">' + MD.render(e.body) + '</div>' : '') +
+      (monthN > 1 ? '<p class="muted small">今月 ' + monthN + ' 日目の記録です</p>' : '') + '</div>' +
+      (e ? '<div class="card prose done-summary">' + MD.render(readableBody(e)) + '</div>' : '') +
+      (f.id === 'reset' ? supportHtml() : '') +
       '<div class="flow-nav"><button class="btn ghost" id="doneWrite">続けて自由に書く</button><button class="btn primary" id="doneHome">ホームへ</button></div>' +
       '</div>';
     $('#doneHome').onclick = () => { state.flow = null; go('home'); };
@@ -1721,8 +1859,7 @@
       const en = state.entries.get(id);
       if (en && !/### 自由メモ/.test(en.body)) { en.body = en.body.replace(/\s*$/, '') + '\n\n### 自由メモ\n'; en.updatedAt = Date.now(); await persist(en); }
       state.flow = null;
-      state.settings.editorMode = 'write'; saveSettings();
-      openEntry(id);
+      go('editor', { id });
     };
   }
 
@@ -1894,9 +2031,8 @@
       else if (mod && !ev.shiftKey && k === 'k') { ev.preventDefault(); document.body.classList.add('nav-open'); $('#searchInput').focus(); $('#searchInput').select(); }
       else if (mod && !ev.shiftKey && k === 's') { ev.preventDefault(); if (state.view === 'editor') saveNow(); }
       else if (mod && !ev.shiftKey && k === 'e') {
-        if (state.view !== 'editor') return;
-        ev.preventDefault();
-        setMode(state.settings.editorMode === 'preview' ? 'write' : 'preview');
+        if (state.view === 'editor') { ev.preventDefault(); $('#edDone').click(); }
+        else if (state.view === 'read') { ev.preventDefault(); go('editor', { id: state.currentId }); }
       }
       else if (mod && ev.shiftKey && k === 'f') { ev.preventDefault(); toggleFocus(); }
       else if (mod && ev.shiftKey && k === 'l') { ev.preventDefault(); lock(); }
@@ -1937,6 +2073,7 @@
 
   async function boot() {
     applySettings();
+    hydrateIcons();
     $('#lockForm').addEventListener('submit', onUnlock);
     try { await DB.open(); } catch (err) {
       $('#main').innerHTML = '<div class="view"><div class="card"><h2>データベースを開けませんでした</h2><p>' + esc(err.message || err) + '</p><p class="muted">プライベートブラウズでは保存できない場合があります。</p></div></div>';
